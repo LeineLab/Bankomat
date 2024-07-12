@@ -21,6 +21,9 @@ class CardDispenser():
 		self.activeDuty = activeDuty
 		self.detectPin = detectPin
 		GPIO.setup(detectPin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+		self.servo.start(self.idleDuty)
+		sleep(.5)
+		self.servo.stop()
 
 	def __del__(self):
 		self.servo.stop()

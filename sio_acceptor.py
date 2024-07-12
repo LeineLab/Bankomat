@@ -82,7 +82,7 @@ class BillAcceptor:
 	_acceptedVal    = 0
 
 	def _recentlyBusy(self):
-		return self._last_busy + 2 > time.time()
+		return self._last_busy + 5 > time.time()
 
 	def getBillValue(self, id):
 		if id < 1 or id > len(self._notes):

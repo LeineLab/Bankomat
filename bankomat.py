@@ -120,17 +120,18 @@ def buyCard():
 	timeout = time.time() + 30
 	coin.enable()
 	while time.time() < timeout + 2 and keypad.poll() != 'E':
-		if time.time() < timeout:
+		if time.time() > timeout:
 			coin.inhibit()
 		c, p = coin.poll()
-		if c >= 0.5:
+		if c is not None:
 			ukasse = UnifiedKasse([0], 'cards')
 			ukasse.addValue(c, p)
-			cardDispenser.dispense()
-			lcd.clear()
-			lcd.write_string('Danke!')
-			time.sleep(5)
-			return
+			if c >= 0.5:
+				cardDispenser.dispense()
+				lcd.clear()
+				lcd.write_string('Danke!')
+				time.sleep(5)
+				return
 		time.sleep(.1)
 	coin.inhibit()
 	lcd.clear()
@@ -485,7 +486,7 @@ def subMenu(konto):
 			elif key == '8' and konto.isAdmin():
 				mopupKonto(konto)
 				return
-			elif time.time() > timeout:
+			elif time.time() > timeout or key == 'E':
 				konto.disconnect()
 				return
 
