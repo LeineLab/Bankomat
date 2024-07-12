@@ -3,9 +3,12 @@ import RPi.GPIO as GPIO
 
 class CardDispenser():
 	def dispense(self):
+		self.servo.start(self.activeDuty)
 		self.servo.ChangeDutyCycle(self.activeDuty)
 		sleep(.5)
 		self.servo.ChangeDutyCycle(self.idleDuty)
+		sleep(.5)
+		self.servo.stop()
 
 	def check(self):
 		return not GPIO.input(self.detectPin)
@@ -14,7 +17,6 @@ class CardDispenser():
 		GPIO.setmode(GPIO.BCM)
 		GPIO.setup(servoPin, GPIO.OUT)
 		self.servo = GPIO.PWM(servoPin, 50)
-		self.servo.start(idleDuty)
 		self.idleDuty = idleDuty
 		self.activeDuty = activeDuty
 		self.detectPin = detectPin
