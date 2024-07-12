@@ -9,6 +9,7 @@ from nfckasse import NFCKasse
 from unified_kasse import UnifiedKasse
 from door import Door
 from card_dispenser import CardDispenser
+from donation_button import DonationButton
 #from pn532pi import Pn532I2c, Pn532, pn532
 from pn532.pn532.api import PN532
 
@@ -35,6 +36,8 @@ bills = BillAcceptor(user_config.NV9_10_USBPORT)
 door = Door(23, 18)
 cardDispenser = CardDispenser(4, 8)
 
+donationButton = DonationButton(11, 7)
+
 #pni2c = Pn532I2c(1)
 #nfc = Pn532(pni2c)
 
@@ -46,6 +49,7 @@ nfc = PN532()
 nfc.setup()
 
 def wait_for_tag():
+	donationButton.light(1)
 	lcd.backlight_enabled = False
 	lcd.clear()
 	lcd.cursor_pos = (1, 0)
@@ -57,7 +61,15 @@ def wait_for_tag():
 	while True:
 		id_tuple = nfc.read()
 		if id_tuple is not None:
+			donationButton.light(0)
 			return id_tuple[5:5+id_tuple[4]]
+		if donationButton.check():
+			donate()
+			return
+		if keypad.poll() == 'L':
+			donationButton.light(0)
+			buyCard()
+			return
 
 def waitForTransferTag():
 	lcd.clear()
@@ -75,7 +87,7 @@ def waitForTransferTag():
 	return None
 
 def buyCard():
-	lcd.backlight = True
+	lcd.backlight_enabled = True
 	if not cardDispenser.check():
 		lcd.clear()
 		#                 12345678901234567890
@@ -165,6 +177,60 @@ def chargeKonto(konto):
 		else:
 			konto.addValue(0, p)
 	konto.disconnect()
+
+def donate():
+	inserted = 0
+	oldVal = None
+	lastInserted = 0
+	konto = UnifiedKasse([0], 'donations')
+	coin.enable()
+	bills.enableAcceptance()
+	val = 0
+	lcd.backlight_enabled = True
+	while True:
+		if oldVal != val or lastInserted != inserted:
+			lcd.cursor_pos = (0, 0)
+			#                 12345678901234567890
+			lcd.write_string('Spende:')
+			lcd.cursor_pos = (1, 0)
+			lcd.write_string('Bisher:  % 9.2f \x03' % val)
+			lcd.cursor_pos = (2, 0)
+			lcd.write_string('Zuletzt: % 9.2f \x03' % inserted)
+			lcd.cursor_pos = (3, 0)
+			lcd.write_string('Mit Abbruch beenden ')
+			oldVal = val
+			lastInserted = inserted
+		key = keypad.poll()
+		if key == 'E':
+			break
+		c, p = coin.poll()
+		if c is not None:
+			if c > 0:
+				inserted = c
+				konto.addValue(c, p)
+				val += c
+			else:
+				konto.addValue(0, p)
+				pass #unknown coin?
+			coin.enable()
+		bills.parse()
+		if bills.getEscrow():
+			bills.acceptEscrow()
+			time.sleep(.5)
+			b = bills.getAndClearAcceptedValue()
+			inserted = b
+			val += b
+			konto.addValue(b, None)
+		time.sleep(.1)
+	bills.disableAcceptance()
+	coin.inhibit()
+	time.sleep(1)
+	c, p = coin.poll() # If not fast enough disabled
+	if c is not None:
+		if c > 0:
+			konto.addValue(c, p)
+		else:
+			konto.addValue(0, p)
 
 def showTransactionDetails(t):
 	lcd.clear()
@@ -272,6 +338,9 @@ def transferKonto(konto):
 	else:
 		tag = waitForTransferTag()
 		if tag is None:
+			lcd.clear()
+			lcd.write_string('Abgebrochen')
+			time.sleep(5)
 			return False
 		else:
 			ret = konto.transfer(amount, tag)
@@ -467,9 +536,6 @@ def mainMenu(tag):
 						machine.disconnect()
 					if key == '1':
 						subMenu(kasse)
-#					else:
-#						transferNfckasse(kasse)
-					#kasse.disconnect()
 					return
 			if key == '2':
 				if machine is None:
@@ -496,7 +562,6 @@ def mainMenu(tag):
 					if kasse is not None:
 						kasse.disconnect()
 					subMenu(machine)
-					#machine.disconnect()
 					return
 			if key == 'E' or time.time() > timeout:
 				if kasse is not None:
@@ -507,8 +572,9 @@ def mainMenu(tag):
 
 while True:
 	tag = wait_for_tag()
-	lcd.clear()
-	lcd.backlight_enabled = True
-	lcd.write_string('Einen Moment...')
-	mainMenu(tag)
+	if tag is not None:
+		lcd.clear()
+		lcd.backlight_enabled = True
+		lcd.write_string('Einen Moment...')
+		mainMenu(tag)
 

@@ -8,7 +8,7 @@ class CardDispenser():
 		self.servo.ChangeDutyCycle(self.idleDuty)
 
 	def check(self):
-		return GPIO.input(self.detectPin)
+		return not GPIO.input(self.detectPin)
 
 	def __init__(self, servoPin, detectPin, idleDuty = 7, activeDuty = 12):
 		GPIO.setmode(GPIO.BCM)
@@ -18,6 +18,7 @@ class CardDispenser():
 		self.idleDuty = idleDuty
 		self.activeDuty = activeDuty
 		self.detectPin = detectPin
+		GPIO.setup(detectPin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 	def __del__(self):
 		self.servo.stop()
