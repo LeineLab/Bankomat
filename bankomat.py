@@ -20,6 +20,9 @@ lcd.create_char(1, [0x11,0x00,0x11,0x11,0x11,0x11,0x0E,0x00]) #Ü
 lcd.create_char(2, [0x06,0x09,0x09,0x0E,0x09,0x09,0x16,0x00]) #ß
 lcd.create_char(3, [0x07,0x08,0x1E,0x08,0x1E,0x08,0x07,0x00]) #€
 
+lcd.clear()
+lcd.write_string('Booting...')
+
 coin = CoinPulse(17, 22, {2:0.5, 3:1, 4:2})
 cols = [26, 19, 13,  6]
 rows = [21, 20, 16, 12]
@@ -32,7 +35,12 @@ buttons = [
 keypad = Keypad(cols, rows, buttons)
 
 bills = BillAcceptor(user_config.NV9_10_USBPORT)
-
+lcd.cursor_pos = (1,0)
+lcd.write_string('Notes init')
+if not bills.connect():
+	lcd.write_string('    [fail]')
+else:
+	lcd.write_string('      [OK]')
 door = Door(23, 18)
 cardDispenser = CardDispenser(4, 8)
 
@@ -46,7 +54,15 @@ donationButton = DonationButton(11, 7)
 #nfc.SAMConfig()
 
 nfc = PN532()
-nfc.setup()
+lcd.cursor_pos = (2, 0)
+lcd.write_string('NFC Init')
+try:
+	nfc.setup()
+except Exception:
+	lcd.write_string('      [fail]')
+	exit(1)
+lcd.write_string('        [OK]')
+
 
 def wait_for_tag():
 	donationButton.light(1)
@@ -570,6 +586,7 @@ def mainMenu(tag):
 					machine.disconnect()
 				return
 
+time.sleep(1)
 while True:
 	tag = wait_for_tag()
 	if tag is not None:
