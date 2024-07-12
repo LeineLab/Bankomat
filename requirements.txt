@@ -1,0 +1,4 @@
+mysql-connector
+pn532pi
+rpi-lgpio
+pyserial

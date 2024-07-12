@@ -1,0 +1,4 @@
+venv/*
+user_config.py
+*.pyc
+__pycache__
