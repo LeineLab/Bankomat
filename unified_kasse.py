@@ -102,7 +102,10 @@ class UnifiedKasse:
 	def start(self):
 		pass
 
+	def disconnect(self):
+		pass
 
 if __name__ == '__main__':
 	ukasse = UnifiedKasse(user_config.UID_TEST, 'donations')
 	print('User is admin: %d' % (ukasse.isAdmin(), ))
+	ukasse.addValue(0,0)
