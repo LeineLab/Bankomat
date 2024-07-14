@@ -43,7 +43,7 @@ class NFCKasse(UnifiedKasse):
 	def addValue(self, value, pulses):
 		super().addValue(value, pulses)
 		try:
-			self.cursor.execute('INSERT INTO transactions (uid, value) VALUES (%s, %s)', (self.uid, value))
+			self.cursor.execute('INSERT INTO transactions (uid, value, tdate) VALUES (%s, %s, NOW())', (self.uid, value))
 			self.cursor.execute('UPDATE cards SET value = value + %s WHERE uid = %s', (value, self.uid))
 			self.db.commit()
 			return True
@@ -65,8 +65,8 @@ class NFCKasse(UnifiedKasse):
 		except TypeError:
 			return 2
 		try:
-			self.cursor.execute('INSERT INTO transactions (uid, value, exchange_with_uid) VALUES (%s, %s, %s)', (self.uid, -value, dest))
-			self.cursor.execute('INSERT INTO transactions (uid, value, exchange_with_uid) VALUES (%s, %s, %s)', (dest, value, self.uid))
+			self.cursor.execute('INSERT INTO transactions (uid, value, exchange_with_uid, tdate) VALUES (%s, %s, %s, NOW())', (self.uid, -value, dest))
+			self.cursor.execute('INSERT INTO transactions (uid, value, exchange_with_uid, tdate) VALUES (%s, %s, %s, NOW())', (dest, value, self.uid))
 			self.cursor.execute('UPDATE cards SET value = value - %s WHERE uid = %s', (value, self.uid))
 			self.cursor.execute('UPDATE cards SET value = value + %s WHERE uid = %s', (value, dest))
 			self.db.commit()
