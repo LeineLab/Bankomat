@@ -1,4 +1,4 @@
-import serial, time, logging
+import serial, time, logging, datetime
 
 class BillAcceptor:
 	NOTE_ACCEPT1    =   1
@@ -95,6 +95,8 @@ class BillAcceptor:
 		while self.ser.in_waiting > 0:
 			byteData = self.ser.read()
 			b = byteData[0]
+			self.logcsv.write('"%s";%f;%d;0\n' % (datetime.datetime.now().strftime('%d.%m.%y %H:%M:%S.%f'), time.time(), b))
+			self.logcsv.flush()
 			self.logger.debug("Received %d" % b)
 			if b == self.BUSY:
 				self._last_busy = time.time()
@@ -138,6 +140,8 @@ class BillAcceptor:
 
 	def send(self, b):
 		if not self.ser.is_open:
+			self.logcsv.write('"%s";%f;0;%d\n' % (datetime.datetime.now().strftime('%d.%m.%y %H:%M:%S.%f'), time.time(), -b))
+			self.logcsv.flush()
 			return False
 		else:
 			by = bytearray()
@@ -145,6 +149,8 @@ class BillAcceptor:
 			self.logger.debug('Sending %d' % b)
 			self.ser.write(by)
 			self.ser.flush()
+			self.logcsv.write('"%s";%f;0;%d\n' % (datetime.datetime.now().strftime('%d.%m.%y %H:%M:%S.%f'), time.time(), b))
+			self.logcsv.flush()
 			time.sleep(0.1)
 			return True
 
@@ -183,10 +189,23 @@ class BillAcceptor:
 				self.parse()
 			return True
 		except Exception as e:
+			self.logcsv.write('"%s";%f;-1;-1\n' % (datetime.datetime.now().strftime('%d.%m.%y %H:%M:%S.%f'), time.time()))
+			self.logcsv.flush()
 			self.logger.exception("Error while connecting")
 			return False
 
+	def __del__(self):
+		self.logcsv.close()
+
 	def __init__(self, port):
+		try:
+			self.logcsv = open('sio_log.csv', 'r')
+		except FileNotFoundError:
+			self.logcsv = open('sio_log.csv', 'w')
+			self.logcsv.write('"DT";"UT";"In";"Out"\n')
+		finally:
+			self.logcsv.close()
+			self.logcsv = open('sio_log.csv', 'a')
 		self.logger = logging.getLogger(__name__)
 		self.ser = serial.Serial()
 		self.ser.baudrate = 9600
@@ -198,6 +217,7 @@ class BillAcceptor:
 
 
 if __name__ == '__main__':
+	import os
 	acceptor = BillAcceptor('/dev/ttyACM0')
 	if not acceptor.connect():
 		print('Failed to open Port')
