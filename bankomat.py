@@ -547,6 +547,14 @@ def mainMenu(tag):
 			print("Maschinenkonto gefunden %.2f" % mval)
 		else:
 			lcd.write_string('x Kein Laserkonto')
+		donations = UnifiedKasse(tag, 'donations')
+		lcd.cursor_pos = (2, 0)
+		if donations.isAdmin():
+			lcd.write_string('3 Spenden entnehmen')
+		cards = UnifiedKasse(tag, 'cards')
+		lcd.cursor_pos = (3, 0)
+		if cards.isAdmin():
+			lcd.write_string('4 Kartenkäufe entn.')
 		while True:
 			key = keypad.poll()
 			if key == '1':
@@ -577,7 +585,7 @@ def mainMenu(tag):
 					if key == '1':
 						subMenu(kasse)
 					return
-			if key == '2':
+			elif key == '2':
 				if machine is None:
 					lcd.clear()
 					lcd.write_string('Laserkonto nicht')
@@ -603,7 +611,21 @@ def mainMenu(tag):
 						kasse.disconnect()
 					subMenu(machine)
 					return
-			if key == 'E' or time.time() > timeout:
+			elif key == '3' and donations.isAdmin():
+				if kasse is not None:
+					kasse.disconnect()
+				if machine is not None:
+					machine.disconnect()
+				mopupKonto(donations)
+				return
+			elif key == '4' and cards.isAdmin():
+				if kasse is not None:
+					kasse.disconnect()
+				if machine is not None:
+					machine.disconnect()
+				mopupKonto(cards)
+				return
+			elif key == 'E' or time.time() > timeout:
 				if kasse is not None:
 					kasse.disconnect()
 				if machine is not None:
