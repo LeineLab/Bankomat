@@ -23,6 +23,7 @@ class Machines(UnifiedKasse):
 				connection_timeout = 1
 			)
 			self.cursor = self.db.cursor(dictionary=True)
+			self.cursor.execute('SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITED')
 			try:
 				self.cursor.execute("SELECT uid FROM alias WHERE card_id = %s", (self.uid, ))
 				result = self.cursor.fetchone()
