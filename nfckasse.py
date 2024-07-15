@@ -22,7 +22,7 @@ class NFCKasse(UnifiedKasse):
 				connection_timeout = 1
 			)
 			self.cursor = self.db.cursor(dictionary=True)
-			self.cursor.execute('SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITED')
+			self.cursor.execute('SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED')
 			return True
 		except mysql.connector.Error as error:
 			return False
