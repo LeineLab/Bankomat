@@ -115,6 +115,7 @@ class BillAcceptor:
 				else:
 					self._acceptedVal += val
 					self.logger.info('Accepted value currently at %d' % self._acceptedVal)
+				self._last_busy = 0 # Reset busy state, as note is processed
 			elif b == self.REJECT_ESCROW or b == self.ESCROW_ABORT or b == self.NOTE_TAKEN:
 				self._escrowVal = 0
 				self.logger.info('Escrow rejected, setting to zero')
