@@ -3,11 +3,10 @@ from email.mime.text import MIMEText
 import user_config
 
 class emailSender:
-	def report(self, amount, name, target):
+	def report(self, subject, text):
 		try:
-			text = 'Es wurde soeben eine Abschöpfung in Höhe von %.2f Euro für %s von %s vorgenommen.' % (amount, target, name)
 			msg = MIMEText(text, 'plain')
-			msg['Subject'] = 'Abschöpfung'
+			msg['Subject'] = subject
 			msg['From'] = user_config.SMTP_SENDER
 			smtp = SMTP(user_config.SMTP_HOST, 587)
 			smtp.ehlo()
@@ -26,4 +25,4 @@ class emailSender:
 
 if __name__ == '__main__':
 	e = emailSender()
-	e.report(0, 'test', 'testmail')
+	e.report('test', 'testmail')

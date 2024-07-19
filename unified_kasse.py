@@ -84,6 +84,10 @@ class UnifiedKasse:
 			UnifiedKasse._cursor.execute('INSERT INTO transactions (uid, value, pulses, sourcedest) VALUES (%s, %s, %s, %s)', (self._uid, value, pulses, self.source))
 			UnifiedKasse._cursor.execute('UPDATE targets SET value = value + %s WHERE tname = %s', (value, self.source))
 			UnifiedKasse._bankomatDB.commit()
+			total = self.getTotal()
+			if total > 500 and total - value < 500:
+				email = emailSender()
+				email.report('Einzahlungen über 500 Euro', 'Die Einzahlungen für %s liegen über 500 Euro')
 			return True
 		except mysql.connector.Error as error:
 			return False
@@ -94,7 +98,7 @@ class UnifiedKasse:
 			UnifiedKasse._cursor.execute('UPDATE targets SET value = value - %s WHERE tname = %s', (value, self.source))
 			UnifiedKasse._bankomatDB.commit()
 			email = emailSender()
-			email.report(value, self.getAdminName(), self.source)
+			email.report('Abschöpfung %s' % (self.source,), "Soeben hat %s eine Abschöpfung in Höhe von %.2f Euro vorgenommen" % (self.getAdminName(), value))
 			return True
 		except mysql.connector.Error as error:
 			return False
