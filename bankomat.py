@@ -75,7 +75,8 @@ else:
 		lcd.write_string('      [fail]')
 		exit(1)
 
-notify = MqttNotify()
+notify = MqttNotify.getInstance()
+UnifiedKasse([0], 'nfckasse') #init
 
 def wait_for_tag():
 	notify.setState('idle')

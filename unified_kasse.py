@@ -3,6 +3,7 @@ from hashlib import sha256
 from datetime import datetime
 from email_sender import emailSender
 import user_config
+from mqtt_notify import MqttNotify
 
 class Transaction:
 	def __init__(self, desc, value, date):
@@ -24,6 +25,7 @@ class UnifiedKasse:
 	_cursor = None
 
 	def __init__(self, uid, source):
+		self.notify = MqttNotify.getInstance()
 		self.source = source
 		self._uid = 0
 		for i in uid:
@@ -38,6 +40,8 @@ class UnifiedKasse:
 				database = user_config.LOCALDB_DATABASE
 			)
 			UnifiedKasse._cursor = UnifiedKasse._bankomatDB.cursor(dictionary=True)
+			for k in ['nfckasse', 'machines', 'donations', 'cards']:
+				UnifiedKasse([0], k).getTotal()
 
 	def isAdmin(self):
 		try:
@@ -73,6 +77,7 @@ class UnifiedKasse:
 		try:
 			UnifiedKasse._cursor.execute('SELECT value FROM targets WHERE tname = %s', (self.source,))
 			result = self._cursor.fetchone()
+			self.notify.setKasseTotal(self.source, result['value'])
 			return result['value']
 		except mysql.connector.Error as error:
 			return 0
@@ -112,4 +117,4 @@ class UnifiedKasse:
 if __name__ == '__main__':
 	ukasse = UnifiedKasse(user_config.UID_TEST, 'donations')
 	print('User is admin: %d' % (ukasse.isAdmin(), ))
-	ukasse.addValue(0,0)
+	print('Total value: %.2f' % (ukasse.getTotal(), ))
