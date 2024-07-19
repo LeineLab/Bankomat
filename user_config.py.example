@@ -26,4 +26,8 @@ SMTP_HOST        = ''
 SMTP_SENDER      = ''
 SMTP_RECEIVER    = ''
 
+MQTT_HOST        = 'localhost'
+MQTT_USERNAME    = ''
+MQTT_PASSWORD    = ''
+
 UID_TEST         = [0x01, 0x23, 0x45, 0x67]

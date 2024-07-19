@@ -10,6 +10,8 @@ from unified_kasse import UnifiedKasse
 from door import Door
 from card_dispenser import CardDispenser
 from donation_button import DonationButton
+from mqtt_notify import MqttNotify
+
 PN532_API = False
 if PN532_API:
 	from pn532.pn532.api import PN532
@@ -73,8 +75,10 @@ else:
 		lcd.write_string('      [fail]')
 		exit(1)
 
+notify = MqttNotify()
 
 def wait_for_tag():
+	notify.setState('idle')
 	donationButton.light(1)
 	lcd.backlight_enabled = False
 	lcd.clear()
@@ -136,6 +140,7 @@ def buyCard():
 		lcd.write_string('     verfügbar.')
 		time.sleep(5)
 		return
+	notify.setState('buying')
 	lcd.clear()
 	lcd.write_string('Neue Karte: 50ct')
 	lcd.cursor_pos = (1,0)
@@ -169,6 +174,7 @@ def chargeKonto(konto):
 	coin.enable()
 	bills.enableAcceptance()
 	konto.start()
+	notify.setState('charging')
 	while True:
 		if oldVal != val or lastInserted != inserted:
 			lcd.cursor_pos = (0, 0)
@@ -193,6 +199,7 @@ def chargeKonto(konto):
 			if c > 0:
 				inserted = c
 				konto.addValue(c, p)
+				notify.setCoin(c)
 			else:
 				konto.addValue(0, p)
 				pass #unknown coin?
@@ -201,9 +208,10 @@ def chargeKonto(konto):
 		bills.parse()
 		if bills.getEscrow():
 			bills.acceptEscrow()
-			time.sleep(.5)
-			b = bills.getAndClearAcceptedValue()
+		b = bills.getAndClearAcceptedValue()
+		if b:
 			inserted = b
+			notify.setBill(b)
 			konto.addValue(b, None)
 			val = konto.getValue()
 		time.sleep(.1)
@@ -227,6 +235,7 @@ def donate():
 	bills.enableAcceptance()
 	val = 0
 	lcd.backlight_enabled = True
+	notify.setState('donating')
 	while True:
 		if oldVal != val or lastInserted != inserted:
 			lcd.cursor_pos = (0, 0)
@@ -247,6 +256,7 @@ def donate():
 		if c is not None:
 			if c > 0:
 				inserted = c
+				notify.setCoin(c)
 				konto.addValue(c, p)
 				val += c
 			else:
@@ -256,9 +266,10 @@ def donate():
 		bills.parse()
 		if bills.getEscrow():
 			bills.acceptEscrow()
-			time.sleep(.5)
-			b = bills.getAndClearAcceptedValue()
+		b = bills.getAndClearAcceptedValue()
+		if b:
 			inserted = b
+			notify.setBill(b)
 			val += b
 			konto.addValue(b, None)
 		time.sleep(.1)
@@ -291,6 +302,7 @@ def historyKonto(konto):
 	numTransactions = len(transactions)
 	oldTransactions = None
 	timeout = time.time() + 30
+	notify.setState('history')
 	while time.time() < timeout:
 		if transactions != oldTransactions:
 			oldTransactions = transactions
@@ -372,6 +384,7 @@ def enterAmount(maxVal):
 		oldKey = key
 
 def transferKonto(konto):
+	notify.setState('transfer')
 	amount = enterAmount(konto.getValue())
 	if amount is None:
 		return False
@@ -437,6 +450,7 @@ def inputPin():
 
 def mopupKonto(konto):
 	konto.disconnect()
+	notify.setState('mopup')
 	conf = False
 	for i in range(3):
 		pin = inputPin()
@@ -514,6 +528,7 @@ def subMenu(konto):
 				return
 
 def mainMenu(tag):
+	notify.setState('menu')
 	gval = None
 	mval = None
 	kasse = NFCKasse(tag)
