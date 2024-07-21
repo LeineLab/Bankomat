@@ -16,7 +16,7 @@ class MqttNotify():
 		MAC = '%012x' % uuid.getnode()
 		for i in range(1,6):
 			MAC = '%s:%s' % (MAC[:i * 3 - 1], MAC[i * 3 - 1:])
-		settings = Settings.MQTT(host=user_config.MQTT_HOST, username=user_config.MQTT_USERNAME, password=user_config.MQTT_PASSWORD)
+		settings = Settings.MQTT(host=user_config.MQTT_HOST+"0", username=user_config.MQTT_USERNAME, password=user_config.MQTT_PASSWORD)
 		device = DeviceInfo(name='Bankomat', manufacturer='LeineLab', model='Bankomat', identifiers=MAC)
 		self.stateSensor = Sensor(Settings(mqtt=settings, entity=SensorInfo(name='State', unique_id='bankomat_state', device=device)))
 		self.stateSensor.set_state('idle')

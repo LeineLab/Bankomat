@@ -75,11 +75,13 @@ else:
 		lcd.write_string('      [fail]')
 		exit(1)
 
-notify = MqttNotify.getInstance()
 UnifiedKasse([0], 'nfckasse') #init
 
 def wait_for_tag():
-	notify.setState('idle')
+	try:
+		MqttNotify.getInstance().setState('idle')
+	except:
+		pass
 	donationButton.light(1)
 	lcd.backlight_enabled = False
 	lcd.clear()
@@ -145,7 +147,10 @@ def buyCard():
 		lcd.write_string('     verfügbar.')
 		time.sleep(5)
 		return
-	notify.setState('buying')
+	try:
+		MqttNotify.getInstance().setState('buying')
+	except:
+		pass
 	lcd.clear()
 	lcd.write_string('Neue Karte: 50ct')
 	lcd.cursor_pos = (1,0)
@@ -179,7 +184,10 @@ def chargeKonto(konto):
 	coin.enable()
 	bills.enableAcceptance()
 	konto.start()
-	notify.setState('charging')
+	try:
+		MqttNotify.getInstance().setState('charging')
+	except:
+		pass
 	while True:
 		if oldVal != val or lastInserted != inserted:
 			lcd.cursor_pos = (0, 0)
@@ -204,7 +212,10 @@ def chargeKonto(konto):
 			if c > 0:
 				inserted = c
 				konto.addValue(c, p)
-				notify.setCoin(c)
+				try:
+					MqttNotify.getInstance().setCoin(c)
+				except:
+					pass
 			else:
 				konto.addValue(0, p)
 				pass #unknown coin?
@@ -216,7 +227,10 @@ def chargeKonto(konto):
 		b = bills.getAndClearAcceptedValue()
 		if b:
 			inserted = b
-			notify.setNote(b)
+			try:
+				MqttNotify.getInstance().setNote(b)
+			except:
+				pass
 			konto.addValue(b, None)
 			val = konto.getValue()
 		time.sleep(.1)
@@ -240,7 +254,10 @@ def donate():
 	bills.enableAcceptance()
 	val = 0
 	lcd.backlight_enabled = True
-	notify.setState('donating')
+	try:
+		MqttNotify.getInstance().setState('donating')
+	except:
+		pass
 	while True:
 		if oldVal != val or lastInserted != inserted:
 			lcd.cursor_pos = (0, 0)
@@ -261,7 +278,10 @@ def donate():
 		if c is not None:
 			if c > 0:
 				inserted = c
-				notify.setCoin(c)
+				try:
+					MqttNotify.getInstance().setCoin(c)
+				except:
+					pass
 				konto.addValue(c, p)
 				val += c
 			else:
@@ -274,7 +294,10 @@ def donate():
 		b = bills.getAndClearAcceptedValue()
 		if b:
 			inserted = b
-			notify.setNote(b)
+			try:
+				MqttNotify.getInstance().setNote(b)
+			except:
+				pass
 			val += b
 			konto.addValue(b, None)
 		time.sleep(.1)
@@ -307,7 +330,10 @@ def historyKonto(konto):
 	numTransactions = len(transactions)
 	oldTransactions = None
 	timeout = time.time() + 30
-	notify.setState('history')
+	try:
+		MqttNotify.getInstance().setState('history')
+	except:
+		pass
 	while time.time() < timeout:
 		if transactions != oldTransactions:
 			oldTransactions = transactions
@@ -389,7 +415,10 @@ def enterAmount(maxVal):
 		oldKey = key
 
 def transferKonto(konto):
-	notify.setState('transfer')
+	try:
+		MqttNotify.getInstance().setState('transfer')
+	except:
+		pass
 	amount = enterAmount(konto.getValue())
 	if amount is None:
 		return False
@@ -455,7 +484,10 @@ def inputPin():
 
 def mopupKonto(konto):
 	konto.disconnect()
-	notify.setState('mopup')
+	try:
+		MqttNotify.getInstance().setState('mopup')
+	except:
+		pass
 	conf = False
 	for i in range(3):
 		pin = inputPin()
@@ -533,7 +565,10 @@ def subMenu(konto):
 				return
 
 def mainMenu(tag):
-	notify.setState('menu')
+	try:
+		MqttNotify.getInstance().setState('menu')
+	except:
+		pass
 	gval = None
 	mval = None
 	kasse = NFCKasse(tag)
