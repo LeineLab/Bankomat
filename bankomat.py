@@ -83,11 +83,15 @@ def wait_for_tag():
 	donationButton.light(1)
 	lcd.backlight_enabled = False
 	lcd.clear()
-	lcd.cursor_pos = (1, 0)
+	lcd.cursor_pos = (0, 0)
 	#                 12345678901234567890
 	lcd.write_string(' Karte an NFC-Leser ')
-	lcd.cursor_pos = (2, 0)
+	lcd.cursor_pos = (1, 0)
 	lcd.write_string(' halten zum Starten ')
+	lcd.cursor_pos = (2, 0)
+	lcd.write_string(' Spenden oder Karte ')
+	lcd.cursor_pos = (3, 0)
+	lcd.write_string('kaufen lange drücken')
 	while True:
 		if PN532_API:
 			id_tuple = nfc.read()
@@ -100,10 +104,10 @@ def wait_for_tag():
 		if uid is not None:
 			donationButton.light(0)
 			return uid
-		if donationButton.check():
+		elif donationButton.check():
 			donate()
 			return
-		if keypad.poll() == 'L':
+		elif keypad.poll() == 'L':
 			donationButton.light(0)
 			buyCard()
 			return
@@ -189,11 +193,11 @@ def chargeKonto(konto):
 			lcd.cursor_pos = (2, 0)
 			lcd.write_string('Zuletzt: % 9.2f \x03' % inserted)
 			lcd.cursor_pos = (3, 0)
-			lcd.write_string('Mit Abbruch beenden ')
+			lcd.write_string('Mit OK beenden ')
 			oldVal = val
 			lastInserted = inserted
 		key = keypad.poll()
-		if key == 'E':
+		if key == 'O':
 			break
 		c, p = coin.poll()
 		if c is not None:
@@ -212,7 +216,7 @@ def chargeKonto(konto):
 		b = bills.getAndClearAcceptedValue()
 		if b:
 			inserted = b
-			notify.setBill(b)
+			notify.setNote(b)
 			konto.addValue(b, None)
 			val = konto.getValue()
 		time.sleep(.1)
@@ -241,17 +245,17 @@ def donate():
 		if oldVal != val or lastInserted != inserted:
 			lcd.cursor_pos = (0, 0)
 			#                 12345678901234567890
-			lcd.write_string('Spende:')
+			lcd.write_string('Spende:             ')
 			lcd.cursor_pos = (1, 0)
 			lcd.write_string('Bisher:  % 9.2f \x03' % val)
 			lcd.cursor_pos = (2, 0)
 			lcd.write_string('Zuletzt: % 9.2f \x03' % inserted)
 			lcd.cursor_pos = (3, 0)
-			lcd.write_string('Mit Abbruch beenden ')
+			lcd.write_string('Mit OK beenden      ')
 			oldVal = val
 			lastInserted = inserted
 		key = keypad.poll()
-		if key == 'E':
+		if key == 'O':
 			break
 		c, p = coin.poll()
 		if c is not None:
@@ -270,7 +274,7 @@ def donate():
 		b = bills.getAndClearAcceptedValue()
 		if b:
 			inserted = b
-			notify.setBill(b)
+			notify.setNote(b)
 			val += b
 			konto.addValue(b, None)
 		time.sleep(.1)
