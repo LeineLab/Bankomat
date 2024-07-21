@@ -90,6 +90,12 @@ class Machines(UnifiedKasse):
 		except TypeError:
 			return []
 
+	def ping(self):
+		try:
+			self.db.ping()
+			return super().ping()
+		except InterfaceError:
+			return False
 
 if __name__ == '__main__':
 	machines = Machines(user_config.UID_TEST)

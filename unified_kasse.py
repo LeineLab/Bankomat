@@ -122,7 +122,16 @@ class UnifiedKasse:
 	def disconnect(self):
 		pass
 
+	def ping(self):
+		try:
+			self._bankomatDB.ping()
+			return True
+		except InterfaceError:
+			return False
+
+
 if __name__ == '__main__':
 	ukasse = UnifiedKasse(user_config.UID_TEST, 'donations')
 	print('User is admin: %d' % (ukasse.isAdmin(), ))
 	print('Total value: %.2f' % (ukasse.getTotal(), ))
+	print(ukasse.ping())

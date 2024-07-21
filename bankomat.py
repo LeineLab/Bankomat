@@ -191,7 +191,6 @@ def chargeKonto(konto):
 	while True:
 		if oldVal != val or lastInserted != inserted:
 			lcd.cursor_pos = (0, 0)
-			#                 12345678901234567890
 			if isinstance(konto, NFCKasse):
 				lcd.write_string('   Getränkekonto:   ')
 			else:
@@ -206,6 +205,16 @@ def chargeKonto(konto):
 			lastInserted = inserted
 		key = keypad.poll()
 		if key == 'O':
+			break
+		if not konto.ping():
+			lcd.clear()
+			#                 12345678901234567890
+			lcd.write_string('Verbindung zur')
+			lcd.cursor_pos = (1, 0)
+			lcd.write_string('Datenbank verloren.')
+			lcd.cursor_pos = (2, 0)
+			lcd.write_string('Vorgang abgebrochen')
+			time.sleep(5)
 			break
 		c, p = coin.poll()
 		if c is not None:
@@ -273,6 +282,16 @@ def donate():
 			lastInserted = inserted
 		key = keypad.poll()
 		if key == 'O':
+			break
+		if not konto.ping():
+			lcd.clear()
+			#                 12345678901234567890
+			lcd.write_string('Verbindung zur')
+			lcd.cursor_pos = (1, 0)
+			lcd.write_string('Datenbank verloren.')
+			lcd.cursor_pos = (2, 0)
+			lcd.write_string('Vorgang abgebrochen')
+			time.sleep(5)
 			break
 		c, p = coin.poll()
 		if c is not None:
