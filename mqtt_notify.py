@@ -16,7 +16,7 @@ class MqttNotify():
 		MAC = '%012x' % uuid.getnode()
 		for i in range(1,6):
 			MAC = '%s:%s' % (MAC[:i * 3 - 1], MAC[i * 3 - 1:])
-		settings = Settings.MQTT(host=user_config.MQTT_HOST+"0", username=user_config.MQTT_USERNAME, password=user_config.MQTT_PASSWORD)
+		settings = Settings.MQTT(host=user_config.MQTT_HOST, username=user_config.MQTT_USERNAME, password=user_config.MQTT_PASSWORD)
 		device = DeviceInfo(name='Bankomat', manufacturer='LeineLab', model='Bankomat', identifiers=MAC)
 		self.stateSensor = Sensor(Settings(mqtt=settings, entity=SensorInfo(name='State', unique_id='bankomat_state', device=device)))
 		self.stateSensor.set_state('idle')
@@ -30,7 +30,7 @@ class MqttNotify():
 		self.nfckasseTotalSensor.set_state(None)
 		self.machineTotalSensor = Sensor(Settings(mqtt=settings, entity=SensorInfo(name='Machine Total', unique_id='bankomat_machine_total', device=device, device_class="monetary", unit_of_measurement="EUR")))
 		self.machineTotalSensor.set_state(None)
-		self.donationsTotalSensor = Sensor(Settings(mqtt=settings, entity=SensorInfo(name='Dontaions Total', unique_id='bankomat_donations_total', device=device, device_class="monetary", unit_of_measurement="EUR")))
+		self.donationsTotalSensor = Sensor(Settings(mqtt=settings, entity=SensorInfo(name='Donations Total', unique_id='bankomat_donations_total', device=device, device_class="monetary", unit_of_measurement="EUR")))
 		self.donationsTotalSensor.set_state(None)
 		self.cardsTotalSensor = Sensor(Settings(mqtt=settings, entity=SensorInfo(name='Cards Total', unique_id='bankomat_cards_total', device=device, device_class="monetary", unit_of_measurement="EUR")))
 		self.cardsTotalSensor.set_state(None)
