@@ -39,6 +39,7 @@ class UnifiedKasse:
 				database = user_config.LOCALDB_DATABASE
 			)
 			UnifiedKasse._cursor = UnifiedKasse._bankomatDB.cursor(dictionary=True)
+			UnifiedKasse._cursor.execute('SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED')
 			for k in ['nfckasse', 'machines', 'donations', 'cards']:
 				UnifiedKasse([0], k).getTotal()
 
@@ -49,7 +50,7 @@ class UnifiedKasse:
 			return 'uid' in result
 		except mysql.connector.Error as error:
 			return False
-		except TypeError:
+		except TypeError as error:
 			return False
 
 	def getAdminName(self):
@@ -62,9 +63,12 @@ class UnifiedKasse:
 		except TypeError:
 			return None
 
+	def generatePin(pin):
+		return sha256(pin.encode('utf-8')).hexdigest()
+
 	def checkPin(self, pin):
 		try:
-			UnifiedKasse._cursor.execute('SELECT uid FROM admins WHERE uid = %s AND pin = %s', (self._uid, sha256(pin).hexdigest()))
+			UnifiedKasse._cursor.execute('SELECT uid FROM admins WHERE uid = %s AND pin = %s', (self._uid, UnifiedKasse.generatePin(pin)))
 			result = self._cursor.fetchone()
 			return 'uid' in result
 		except mysql.connector.Error as error:
@@ -135,3 +139,5 @@ if __name__ == '__main__':
 	print('User is admin: %d' % (ukasse.isAdmin(), ))
 	print('Total value: %.2f' % (ukasse.getTotal(), ))
 	print(ukasse.ping())
+	pin = input('Generate pin hash: ')
+	print(UnifiedKasse.generatePin(pin))

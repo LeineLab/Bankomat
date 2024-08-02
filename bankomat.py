@@ -100,8 +100,11 @@ def wait_for_tag():
 			if id_tuple is not None:
 				uid = bytearray(id_tuple[5:5+id_tuple[4]])
 		else:
-			success, uid = nfc.readPassiveTargetID(pn532.PN532_MIFARE_ISO14443A_106KBPS)
-			if not success:
+			try:
+				success, uid = nfc.readPassiveTargetID(pn532.PN532_MIFARE_ISO14443A_106KBPS)
+				if not success:
+					uid = None
+			except:
 				uid = None
 		if uid is not None:
 			donationButton.light(0)
@@ -129,8 +132,11 @@ def waitForTransferTag():
 			if id_tuple is not None:
 				uid = bytearray(id_tuple[5:5+id_tuple[4]])
 		else:
-			success, uid = nfc.readPassiveTargetID(pn532.PN532_MIFARE_ISO14443A_106KBPS)
-			if not success:
+			try:
+				success, uid = nfc.readPassiveTargetID(pn532.PN532_MIFARE_ISO14443A_106KBPS)
+				if not success:
+					uid = None
+			except:
 				uid = None
 		if uid is not None:
 			return uid
@@ -512,7 +518,7 @@ def mopupKonto(konto):
 		pin = inputPin()
 		if pin is None:
 			return
-		if konto.checkPin(pin.encode('utf-8')):
+		if konto.checkPin(pin):
 			conf = True
 			break
 	if not conf:
