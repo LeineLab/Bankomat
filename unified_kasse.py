@@ -24,13 +24,8 @@ class UnifiedKasse:
 	_bankomatDB = None
 	_cursor = None
 
-	def __init__(self, uid, source):
-		self.source = source
-		self._uid = 0
-		for i in uid:
-			self._uid <<= 8
-			self._uid += i
-		if UnifiedKasse._bankomatDB is None:
+	def _connect(self):
+		try:
 			UnifiedKasse._bankomatDB = mysql.connector.connect(
 				host = user_config.LOCALDB_HOST,
 				port = user_config.LOCALDB_PORT,
@@ -42,6 +37,19 @@ class UnifiedKasse:
 			UnifiedKasse._cursor.execute('SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED')
 			for k in ['nfckasse', 'machines', 'donations', 'cards']:
 				UnifiedKasse([0], k).getTotal()
+			return True
+		except mysql.connector.Error:
+			return False
+
+	def __init__(self, uid, source):
+		self.source = source
+		self._uid = 0
+		for i in uid:
+			self._uid <<= 8
+			self._uid += i
+		if UnifiedKasse._bankomatDB is None:
+			if not self._connect():
+				raise Exception('UnifiedKasse DB Connection failed')
 
 	def isAdmin(self):
 		try:
@@ -92,7 +100,7 @@ class UnifiedKasse:
 
 	def addValue(self, value, pulses):
 		try:
-			UnifiedKasse._cursor.execute('INSERT INTO transactions (uid, value, pulses, sourcedest) VALUES (%s, %s, %s, %s)', (self._uid, value, pulses, self.source))
+			UnifiedKasse._cursor.execute('INSERT INTO transactions (uid, value, pulses, sourcedest, dt) VALUES (%s, %s, %s, %s, NOW())', (self._uid, value, pulses, self.source))
 			UnifiedKasse._cursor.execute('UPDATE targets SET value = value + %s WHERE tname = %s', (value, self.source))
 			UnifiedKasse._bankomatDB.commit()
 			total = self.getTotal()
@@ -108,7 +116,7 @@ class UnifiedKasse:
 
 	def mopupValue(self, value):
 		try:
-			UnifiedKasse._cursor.execute('INSERT INTO transactions (uid, value, sourcedest) VALUES (%s, %s, %s)', (self._uid, -value, self.source))
+			UnifiedKasse._cursor.execute('INSERT INTO transactions (uid, value, sourcedest, dt) VALUES (%s, %s, %s, NOW())', (self._uid, -value, self.source))
 			UnifiedKasse._cursor.execute('UPDATE targets SET value = value - %s WHERE tname = %s', (value, self.source))
 			UnifiedKasse._bankomatDB.commit()
 			try:
@@ -130,8 +138,10 @@ class UnifiedKasse:
 		try:
 			self._bankomatDB.ping()
 			return True
-		except InterfaceError:
-			return False
+		except mysql.connector.errors.OperationalError: # lost connection
+			return self._connect()
+		except mysql.connector.errors.InterfaceError: # lost connection
+			return self._connect()
 
 
 if __name__ == '__main__':

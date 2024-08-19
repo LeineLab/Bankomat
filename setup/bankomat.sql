@@ -80,6 +80,7 @@ CREATE TABLE `transactions` (
   `value` decimal(6,2) NOT NULL DEFAULT 0.00,
   `pulses` int(2) DEFAULT NULL,
   `sourcedest` varchar(20) DEFAULT NULL,
+  `dt` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`tid`),
   KEY `tname` (`sourcedest`),
   CONSTRAINT `tname` FOREIGN KEY (`sourcedest`) REFERENCES `targets` (`tname`)
