@@ -124,7 +124,6 @@ def waitForTransferTag():
 	lcd.write_string('Karte zum \x01berweisen')
 	lcd.cursor_pos = (2, 0)
 	lcd.write_string('     anhalten...    ')
-	nfc.in_list_passive_target()
 	timeout = time.time()+30
 	while keypad.poll() != 'E' and time.time() < timeout:
 		if PN532_API:
