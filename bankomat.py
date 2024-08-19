@@ -11,12 +11,7 @@ from door import Door
 from card_dispenser import CardDispenser
 from donation_button import DonationButton
 from mqtt_notify import MqttNotify
-
-PN532_API = False
-if PN532_API:
-	from pn532.pn532.api import PN532
-else:
-	from pn532pi import Pn532I2c, Pn532, pn532
+from pn532pi import Pn532I2c, Pn532, pn532
 
 import user_config
 
@@ -54,26 +49,17 @@ donationButton = DonationButton(11, 7)
 lcd.cursor_pos = (2, 0)
 lcd.write_string('NFC Init')
 
-if PN532_API:
-	nfc = PN532()
-	try:
-		nfc.setup()
-	except Exception:
-		lcd.write_string('      [fail]')
-		exit(1)
-	lcd.write_string('        [OK]')
-else:
-	try:
-		pni2c = Pn532I2c(1)
-		nfc = Pn532(pni2c)
+try:
+	pni2c = Pn532I2c(1)
+	nfc = Pn532(pni2c)
 
-		nfc.begin()
-		nfc.setPassiveActivationRetries(0xFF)
-		nfc.SAMConfig()
-		lcd.write_string('        [OK]')
-	except Exception:
-		lcd.write_string('      [fail]')
-		exit(1)
+	nfc.begin()
+	nfc.setPassiveActivationRetries(0xFF)
+	nfc.SAMConfig()
+	lcd.write_string('        [OK]')
+except Exception:
+	lcd.write_string('      [fail]')
+	exit(1)
 
 UnifiedKasse([0], 'nfckasse') #init
 
@@ -95,17 +81,12 @@ def wait_for_tag():
 	lcd.cursor_pos = (3, 0)
 	lcd.write_string('kaufen lange drücken')
 	while True:
-		if PN532_API:
-			id_tuple = nfc.read()
-			if id_tuple is not None:
-				uid = bytearray(id_tuple[5:5+id_tuple[4]])
-		else:
-			try:
-				success, uid = nfc.readPassiveTargetID(pn532.PN532_MIFARE_ISO14443A_106KBPS)
-				if not success:
-					uid = None
-			except:
+		try:
+			success, uid = nfc.readPassiveTargetID(pn532.PN532_MIFARE_ISO14443A_106KBPS)
+			if not success:
 				uid = None
+		except:
+			uid = None
 		if uid is not None:
 			donationButton.light(0)
 			return uid
@@ -126,17 +107,12 @@ def waitForTransferTag():
 	lcd.write_string('     anhalten...    ')
 	timeout = time.time()+30
 	while keypad.poll() != 'E' and time.time() < timeout:
-		if PN532_API:
-			id_tuple = nfc.read()
-			if id_tuple is not None:
-				uid = bytearray(id_tuple[5:5+id_tuple[4]])
-		else:
-			try:
-				success, uid = nfc.readPassiveTargetID(pn532.PN532_MIFARE_ISO14443A_106KBPS)
-				if not success:
-					uid = None
-			except:
+		try:
+			success, uid = nfc.readPassiveTargetID(pn532.PN532_MIFARE_ISO14443A_106KBPS)
+			if not success:
 				uid = None
+		except:
+			uid = None
 		if uid is not None:
 			return uid
 	return None
