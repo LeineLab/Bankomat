@@ -307,9 +307,25 @@ def donate():
 	c, p = coin.poll() # If not fast enough disabled
 	if c is not None:
 		if c > 0:
+			val += c
 			konto.addValue(c, p)
 		else:
 			konto.addValue(0, p)
+	lcd.clear()
+	if val == 0:
+		#                 12345678901234567890
+		lcd.write_string("      Schade...")
+	elif val >= 20:
+		#                 12345678901234567890
+		lcd.write_string("  Sehr gro\x02zügig!")
+	elif val >= 5:
+		#                 12345678901234567890
+		lcd.write_string("    Vielen Dank!")
+	else:
+		#                 12345678901234567890
+		lcd.write_string("       Danke!")
+	time.sleep(3)
+
 
 def showTransactionDetails(t):
 	lcd.clear()
