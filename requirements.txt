@@ -3,3 +3,5 @@ pn532pi
 rpi-lgpio
 pyserial
 ha-mqtt-discoverable
+RPLCD
+smbus
