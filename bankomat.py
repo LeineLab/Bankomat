@@ -449,7 +449,10 @@ def transferKonto(konto):
 			ret = konto.transfer(amount, tag)
 			lcd.clear()
 			if ret == 0:
-				lcd.write_string('\x01berweisung erfolgreich')
+				#                 12345678901234567890
+				lcd.write_string('    \x01berweisung')
+				lcd.cursor_pos = (1, 0)
+				lcd.write_string('    erfolgreich')
 			elif ret == -1:
 				lcd.write_string('Fehler')
 				lcd.cursor_pos = (1, 0)
