@@ -50,6 +50,7 @@ class UnifiedKasse:
 		if UnifiedKasse._bankomatDB is None:
 			if not self._connect():
 				raise Exception('UnifiedKasse DB Connection failed')
+		self.ping()
 
 	def isAdmin(self):
 		try:
@@ -149,5 +150,6 @@ if __name__ == '__main__':
 	print('User is admin: %d' % (ukasse.isAdmin(), ))
 	print('Total value: %.2f' % (ukasse.getTotal(), ))
 	print(ukasse.ping())
-	pin = input('Generate pin hash: ')
+	import getpass
+	pin = getpass.getpass('Generate pin hash (4 digits): ')
 	print(UnifiedKasse.generatePin(pin))
