@@ -69,8 +69,8 @@ class Machines(UnifiedKasse):
 	def addValue(self, value, pulses):
 		super().addValue(value, pulses)
 		try:
-			self.cursor.execute('UPDATE sessions SET price=price+%s WHERE uid=%s AND machine="revaluator" AND start_time=%s', (value, self.uid, self.start_time))
-			self.cursor.execute('UPDATE cards SET value=value+%s WHERE uid=%s', (value, self.uid))
+			self.cursor.execute('UPDATE sessions SET price = price+%s WHERE uid=%s AND machine="revaluator" AND start_time=%s', (value, self.uid, self.start_time))
+			self.cursor.execute('UPDATE cards SET value = value+%s WHERE uid=%s', (value, self.uid))
 			self.db.commit()
 			return True
 		except mysql.connector.Error as error:
@@ -80,7 +80,7 @@ class Machines(UnifiedKasse):
 	def getTransactions(self, offset = 0):
 		try:
 			transactions = []
-			self.cursor.execute('SELECT price, ifnull(comment, machine) as description, start_time FROM sessions WHERE uid = %s ORDER BY start_time DESC LIMIT 4 OFFSET %s', (self.uid, offset))
+			self.cursor.execute('SELECT price, IFNULL(comment, IF(machine = "revaluator", "Aufladung", CONCAT(machine, " ", IF(end_time IS NULL, "NaN", (end_time - start_time) DIV 60 + 1), " min"))) as description, start_time FROM sessions WHERE uid = %s ORDER BY start_time DESC LIMIT 4 OFFSET %s', (self.uid, offset))
 			while True:
 				result = self.cursor.fetchone()
 				if result is None:
