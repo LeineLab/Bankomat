@@ -101,9 +101,9 @@ class NFCKasse(UnifiedKasse):
 
 	def ping(self):
 		try:
-			self.db.ping()
+			self.db.ping(True)
 			return super().ping()
-		except InterfaceError:
+		except mysql.connector.errors.OperationalError:
 			return False
 
 if __name__ == '__main__':

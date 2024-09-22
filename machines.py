@@ -57,9 +57,10 @@ class Machines(UnifiedKasse):
 
 	def getValue(self):
 		try:
-			self.cursor.execute('SELECT credit FROM cards WHERE uid = %s', (self.uid, ))
+			self.cursor.execute('SELECT value FROM cards WHERE uid = %s', (self.uid, ))
+			print('SELECT value FROM cards WHERE uid = %s', (str(self.uid), ))
 			result = self.cursor.fetchone()
-			return result['credit']
+			return result['value']
 		except mysql.connector.Error as error:
 			return None
 		except TypeError:
@@ -69,7 +70,7 @@ class Machines(UnifiedKasse):
 		super().addValue(value, pulses)
 		try:
 			self.cursor.execute('UPDATE sessions SET price=price+%s WHERE uid=%s AND machine="revaluator" AND start_time=%s', (value, self.uid, self.start_time))
-			self.cursor.execute('UPDATE cards SET credit=credit+%s WHERE uid=%s', (value, self.uid))
+			self.cursor.execute('UPDATE cards SET value=value+%s WHERE uid=%s', (value, self.uid))
 			self.db.commit()
 			return True
 		except mysql.connector.Error as error:
@@ -79,12 +80,12 @@ class Machines(UnifiedKasse):
 	def getTransactions(self, offset = 0):
 		try:
 			transactions = []
-			self.cursor.execute('SELECT price, machine, start_time FROM sessions WHERE uid = %s ORDER BY start_time DESC LIMIT 4 OFFSET %s', (self.uid, offset))
+			self.cursor.execute('SELECT price, ifnull(comment, machine) as description, start_time FROM sessions WHERE uid = %s ORDER BY start_time DESC LIMIT 4 OFFSET %s', (self.uid, offset))
 			while True:
 				result = self.cursor.fetchone()
 				if result is None:
 					return transactions
-				transactions.append(Transaction(result['machine'], result['price'], result['start_time']))
+				transactions.append(Transaction(result['description'], result['price'], result['start_time']))
 		except mysql.connector.Error as error:
 			return []
 		except TypeError:
@@ -92,9 +93,9 @@ class Machines(UnifiedKasse):
 
 	def ping(self):
 		try:
-			self.db.ping()
+			self.db.ping(True)
 			return super().ping()
-		except InterfaceError:
+		except mysql.connector.errors.OperationalError:
 			return False
 
 if __name__ == '__main__':

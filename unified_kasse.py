@@ -50,7 +50,10 @@ class UnifiedKasse:
 		if UnifiedKasse._bankomatDB is None:
 			if not self._connect():
 				raise Exception('UnifiedKasse DB Connection failed')
-		self.ping()
+		try:
+			self.ping()
+		except:
+			pass
 
 	def isAdmin(self):
 		try:
@@ -105,10 +108,10 @@ class UnifiedKasse:
 			UnifiedKasse._cursor.execute('UPDATE targets SET value = value + %s WHERE tname = %s', (value, self.source))
 			UnifiedKasse._bankomatDB.commit()
 			total = self.getTotal()
-			if total > 500 and total - value < 500:
+			if float(total) > 500 and float(total) - float(value) < 500:
 				try:
 					email = emailSender()
-					email.report('Einzahlungen über 500 Euro', 'Die Einzahlungen für %s liegen über 500 Euro')
+					email.report('Einzahlungen über 500 Euro', 'Die Einzahlungen für %s liegen über 500 Euro' % (self.source,))
 				except:
 					pass
 			return True
@@ -137,7 +140,7 @@ class UnifiedKasse:
 
 	def ping(self):
 		try:
-			self._bankomatDB.ping()
+			UnifiedKasse._bankomatDB.ping(True)
 			return True
 		except mysql.connector.errors.OperationalError: # lost connection
 			return self._connect()
