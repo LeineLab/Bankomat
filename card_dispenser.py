@@ -29,6 +29,6 @@ class CardDispenser():
 		self.servo.stop()
 
 if __name__ == '__main__':
-	cd = CardDispenser(4,9)
+	cd = CardDispenser(4, 5)
 	cd.dispense()
 	sleep(1)
