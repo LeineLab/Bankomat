@@ -35,7 +35,7 @@ buttons = [
 keypad = Keypad(cols, rows, buttons)
 
 bills = BillAcceptor(user_config.NV9_10_USBPORT)
-lcd.cursor_pos = (1,0)
+lcd.cursor_pos = (1, 0)
 lcd.write_string('Notes init')
 if not bills.connect():
 	lcd.write_string('    [fail]')
@@ -124,8 +124,8 @@ def waitForTransferTag():
 	lcd.write_string('Karte zum \x01berweisen')
 	lcd.cursor_pos = (2, 0)
 	lcd.write_string('     anhalten...    ')
-	timeout = time.time()+30
-	while keypad.poll() != 'E' and time.time() < timeout:
+	timeout = time.time() + 30
+	while keypad.poll() != 'E' and timeout > time.time():
 		try:
 			success, uid = nfc.readPassiveTargetID(pn532.PN532_MIFARE_ISO14443A_106KBPS)
 			if not success:
@@ -142,9 +142,9 @@ def buyCard():
 	if not cardDispenser.check():
 		lcd.clear()
 		#                 12345678901234567890
-		lcd.cursor_pos = (1,0)
+		lcd.cursor_pos = (1, 0)
 		lcd.write_string('Derzeit keine Karten')
-		lcd.cursor_pos = (2,0)
+		lcd.cursor_pos = (2, 0)
 		lcd.write_string('     verfügbar.')
 		time.sleep(5)
 		return
@@ -154,12 +154,12 @@ def buyCard():
 		pass
 	lcd.clear()
 	lcd.write_string('Neue Karte: 50ct')
-	lcd.cursor_pos = (1,0)
+	lcd.cursor_pos = (1, 0)
 	lcd.write_string('Kein Wechselgeld!')
 	timeout = time.time() + 30
 	coin.enable()
-	while time.time() < timeout + 2 and keypad.poll() != 'E':
-		if time.time() > timeout:
+	while timeout > time.time() and keypad.poll() != 'E':
+		if time.time() > timeout - 2:
 			coin.inhibit()
 		c, p = coin.poll()
 		if c is not None:
@@ -168,14 +168,14 @@ def buyCard():
 			if c >= 0.5:
 				cardDispenser.dispense()
 				lcd.clear()
-				lcd.cursor_pos = (3,0)
+				lcd.cursor_pos = (2, 0)
 				lcd.write_string('Danke!')
 				time.sleep(5)
 				return
 		time.sleep(.1)
 	coin.inhibit()
 	lcd.clear()
-	lcd.cursor_pos = (3,0)
+	lcd.cursor_pos = (2, 0)
 	lcd.write_string('Abgebrochen')
 	time.sleep(5)
 
@@ -191,7 +191,8 @@ def chargeKonto(konto):
 		MqttNotify.getInstance().setState('charging')
 	except:
 		pass
-	while True:
+	timeout = time.time() + 30
+	while timeout > time.time():
 		if oldVal != val or lastInserted != inserted:
 			lcd.cursor_pos = (0, 0)
 			if isinstance(konto, NFCKasse):
@@ -221,6 +222,7 @@ def chargeKonto(konto):
 			break
 		c, p = coin.poll()
 		if c is not None:
+			timeout = time.time() + 30
 			if c > 0:
 				inserted = c
 				konto.addValue(c, p)
@@ -235,9 +237,11 @@ def chargeKonto(konto):
 			val = konto.getValue()
 		bills.parse()
 		if bills.getEscrow():
+			timeout = time.time() + 30
 			bills.acceptEscrow()
 		b = bills.getAndClearAcceptedValue()
 		if b:
+			timeout = time.time() + 30
 			inserted = b
 			try:
 				MqttNotify.getInstance().setNote(b)
@@ -270,7 +274,8 @@ def donate():
 		MqttNotify.getInstance().setState('donating')
 	except:
 		pass
-	while True:
+	timeout = time.time() + 30
+	while timeout > time.time():
 		if oldVal != val or lastInserted != inserted:
 			lcd.cursor_pos = (0, 0)
 			#                 12345678901234567890
@@ -298,6 +303,7 @@ def donate():
 			break
 		c, p = coin.poll()
 		if c is not None:
+			timeout = time.time() + 30
 			if c > 0:
 				inserted = c
 				try:
@@ -312,9 +318,11 @@ def donate():
 			coin.enable()
 		bills.parse()
 		if bills.getEscrow():
+			timeout = time.time() + 30
 			bills.acceptEscrow()
 		b = bills.getAndClearAcceptedValue()
 		if b:
+			timeout = time.time() + 30
 			inserted = b
 			try:
 				MqttNotify.getInstance().setNote(b)
@@ -334,7 +342,7 @@ def donate():
 		else:
 			konto.addValue(0, p)
 	lcd.clear()
-	lcd.cursor_pos = (3, 0)
+	lcd.cursor_pos = (2, 0)
 	if val == 0:
 		#                 12345678901234567890
 		lcd.write_string("      Schade...")
@@ -358,7 +366,7 @@ def showTransactionDetails(t):
 	lcd.cursor_pos = (3, 0)
 	lcd.write_string("%18.2f \x03" % t.getValue())
 	timeout = time.time() + 30
-	while keypad.poll() != 'E' and time.time() < timeout:
+	while keypad.poll() != 'E' and timeout > time.time():
 		time.sleep(.1)
 
 def historyKonto(konto):
@@ -373,7 +381,7 @@ def historyKonto(konto):
 		MqttNotify.getInstance().setState('history')
 	except:
 		pass
-	while time.time() < timeout:
+	while timeout > time.time():
 		if transactions != oldTransactions:
 			oldTransactions = transactions
 			for i in range(len(transactions)):
@@ -465,7 +473,9 @@ def transferKonto(konto):
 		tag = waitForTransferTag()
 		if tag is None:
 			lcd.clear()
-			lcd.write_string('Abgebrochen')
+			lcd.cursor(2, 0)
+			#                 12345678901234567890
+			lcd.write_string('    Abgebrochen')
 			time.sleep(5)
 			return False
 		else:
@@ -578,7 +588,8 @@ def mopupKonto(konto):
 				time.sleep(.5)
 
 def subMenu(konto):
-	while True:
+	timeout = time.time() + 30
+	while timeout > time.time():
 		lcd.clear()
 		lcd.write_string('5 Einzahlung')
 		lcd.cursor_pos = (1, 0)
@@ -597,6 +608,7 @@ def subMenu(konto):
 				return
 			elif key == '6':
 				historyKonto(konto)
+				timeout = time.time() + 30
 				break
 			elif key == '7' and isinstance(konto, NFCKasse):
 				transferKonto(konto)
@@ -628,7 +640,8 @@ def mainMenu(tag):
 		machine = None
 	else:
 		mval = machine.getValue()
-	while True:
+	timeout = time.time() + 30
+	while timeout > time.time():
 		timeout = time.time() + 30
 		lcd.clear()
 		lcd.cursor_pos = (0, 0)
@@ -664,20 +677,20 @@ def mainMenu(tag):
 					lcd.clear()
 					#                 12345678901234567890
 					lcd.write_string('Getränkekasse nicht')
-					lcd.cursor_pos = (1,0)
+					lcd.cursor_pos = (1, 0)
 					lcd.write_string('verfügbar. Bitte')
-					lcd.cursor_pos = (2,0)
+					lcd.cursor_pos = (2, 0)
 					lcd.write_string('später noch einmal')
-					lcd.cursor_pos = (3,0)
+					lcd.cursor_pos = (3, 0)
 					lcd.write_string('versuchen.')
 					time.sleep(5)
 					break
 				elif gval is None:
 					lcd.clear()
 					lcd.write_string('Kein Getränkekassen-')
-					lcd.cursor_pos = (1,0)
+					lcd.cursor_pos = (1, 0)
 					lcd.write_string('Konto. Erst dort')
-					lcd.cursor_pos = (2,0)
+					lcd.cursor_pos = (2, 0)
 					lcd.write_string('registrieren!')
 					time.sleep(5)
 					break
@@ -691,20 +704,20 @@ def mainMenu(tag):
 				if machine is None:
 					lcd.clear()
 					lcd.write_string('Laserkonto nicht')
-					lcd.cursor_pos = (1,0)
+					lcd.cursor_pos = (1, 0)
 					lcd.write_string('verfügbar. Bitte')
-					lcd.cursor_pos = (2,0)
+					lcd.cursor_pos = (2, 0)
 					lcd.write_string('später noch einmal')
-					lcd.cursor_pos = (3,0)
+					lcd.cursor_pos = (3, 0)
 					lcd.write_string('versuchen.')
 					time.sleep(5)
 					break
 				elif mval is None:
 					lcd.clear()
 					lcd.write_string('Laserkonto nicht')
-					lcd.cursor_pos = (1,0)
+					lcd.cursor_pos = (1, 0)
 					lcd.write_string('existent. Bitte')
-					lcd.cursor_pos = (2,0)
+					lcd.cursor_pos = (2, 0)
 					lcd.write_string('an Luca wenden.')
 					time.sleep(5)
 					break
