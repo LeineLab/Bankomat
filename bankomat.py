@@ -9,7 +9,7 @@ from nfckasse import NFCKasse
 from unified_kasse import UnifiedKasse
 from door import Door
 from card_dispenser import CardDispenser
-from donation_button import DonationButton
+from gpio_button import GPIOButton
 from mqtt_notify import MqttNotify
 from pn532pi import Pn532I2c, Pn532, pn532
 
@@ -42,9 +42,11 @@ if not bills.connect():
 else:
 	lcd.write_string('      [OK]')
 door = Door(23, 18)
-cardDispenser = CardDispenser(4, 8)
+cardDispenser = CardDispenser(4, 5)
 
-donationButton = DonationButton(11, 7)
+donationButton = GPIOButton(11, 7)
+guestButton = GPIOButton(9, 8)
+buyButton = GPIOButton(10, 25)
 
 lcd.cursor_pos = (2, 0)
 lcd.write_string('NFC Init')
@@ -69,17 +71,27 @@ def wait_for_tag():
 	except:
 		pass
 	donationButton.light(1)
+	buyButton.light(1)
+	guestButton.light(1)
+	donationButton.reset()
+	buyButton.reset()
+	guestButton.reset()
 	lcd.backlight_enabled = False
 	lcd.clear()
 	lcd.cursor_pos = (0, 0)
 	#                 12345678901234567890
 	lcd.write_string(' Karte an NFC-Leser ')
 	lcd.cursor_pos = (1, 0)
-	lcd.write_string(' halten zum Starten ')
+	lcd.write_string(' halten, alternativ ')
 	lcd.cursor_pos = (2, 0)
-	lcd.write_string(' Spenden oder Karte ')
-	lcd.cursor_pos = (3, 0)
-	lcd.write_string('kaufen lange drücken')
+	if user_config.GUEST_UID is not None:
+		lcd.write_string(' Spenden, Gast oder ')
+		lcd.cursor_pos = (3, 0)
+		lcd.write_string('Karte kaufen drücken')
+	else:
+		lcd.write_string(' Spenden oder Karte ')
+		lcd.cursor_pos = (3, 0)
+		lcd.write_string('   kaufen drücken')
 	while True:
 		try:
 			success, uid = nfc.readPassiveTargetID(pn532.PN532_MIFARE_ISO14443A_106KBPS)
@@ -87,13 +99,20 @@ def wait_for_tag():
 				uid = None
 		except:
 			uid = None
+		if user_config.GUEST_UID is not None and uid is None and guestButton.check():
+			uid = user_config.GUEST_UID
 		if uid is not None:
 			donationButton.light(0)
+			guestButton.light(uid == user_config.GUEST_UID)
+			buyButton.light(0)
 			return uid
 		elif donationButton.check():
+			buyButton.light(0)
+			guestButton.light(0)
 			donate()
 			return
-		elif keypad.poll() == 'L':
+		elif keypad.poll() == 'L' or buyButton.check():
+			guestButton.light(0)
 			donationButton.light(0)
 			buyCard()
 			return
@@ -118,6 +137,7 @@ def waitForTransferTag():
 	return None
 
 def buyCard():
+	buyButton.light(1)
 	lcd.backlight_enabled = True
 	if not cardDispenser.check():
 		lcd.clear()
@@ -148,12 +168,14 @@ def buyCard():
 			if c >= 0.5:
 				cardDispenser.dispense()
 				lcd.clear()
+				lcd.cursor_pos = (3,0)
 				lcd.write_string('Danke!')
 				time.sleep(5)
 				return
 		time.sleep(.1)
 	coin.inhibit()
 	lcd.clear()
+	lcd.cursor_pos = (3,0)
 	lcd.write_string('Abgebrochen')
 	time.sleep(5)
 
@@ -185,7 +207,7 @@ def chargeKonto(konto):
 			oldVal = val
 			lastInserted = inserted
 		key = keypad.poll()
-		if key == 'O':
+		if key == 'O' or (lastInserted == 0 and key == 'E'):
 			break
 		if not konto.ping():
 			lcd.clear()
@@ -262,7 +284,7 @@ def donate():
 			oldVal = val
 			lastInserted = inserted
 		key = keypad.poll()
-		if key == 'O':
+		if key == 'O' or (lastInserted == 0 and key == 'E'):
 			break
 		if not konto.ping():
 			lcd.clear()
@@ -312,6 +334,7 @@ def donate():
 		else:
 			konto.addValue(0, p)
 	lcd.clear()
+	lcd.cursor_pos = (3, 0)
 	if val == 0:
 		#                 12345678901234567890
 		lcd.write_string("      Schade...")
@@ -479,7 +502,9 @@ def transferKonto(konto):
 
 def inputPin():
 	lcd.clear()
-	lcd.write_string('Pin eingeben:')
+	lcd.cursor_pos = (1, 0)
+	#                 12345678901234567890
+	lcd.write_string('   Pin eingeben:    ')
 	pin = ''
 	oldPin = ''
 	oldKey = keypad.poll()
@@ -496,7 +521,7 @@ def inputPin():
 				return pin
 			if pin != oldPin:
 				oldPin = pin
-				lcd.cursor_pos = (1, 0)
+				lcd.cursor_pos = (1, 8)
 				lcd.write_string(('*' * len(pin))+(' ' * (4 - len(pin))))
 		oldKey = key
 
@@ -595,6 +620,9 @@ def mainMenu(tag):
 		kasse = None
 	else:
 		gval = kasse.getValue()
+		if user_config.GUEST_UID is not None and tag == user_config.GUEST_UID:
+			chargeKonto(kasse)
+			return
 	machine = Machines(tag)
 	if not machine.connect():
 		machine = None

@@ -6,6 +6,8 @@ NFCKASSE_DATABASE = 'nfc_kasse'
 NFCKASSE_USERNAME = ''
 NFCKASSE_PASSWORD = ''
 
+GUEST_UID         = None
+
 MACHINES_HOST     = 'localhost'
 MACHINES_PORT     = 3308
 MACHINES_DATABASE = 'laser'
