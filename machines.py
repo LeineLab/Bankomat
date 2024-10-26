@@ -3,6 +3,10 @@ import mysql.connector
 import time
 import user_config
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 class Machines(UnifiedKasse):
 	def __init__(self, uid):
 		super().__init__(uid, 'machines')
@@ -13,6 +17,7 @@ class Machines(UnifiedKasse):
 		self.start_time = None
 
 	def connect(self):
+		logger.debug('Connecting to database')
 		try:
 			self.db = mysql.connector.connect(
 				host = user_config.MACHINES_HOST,
@@ -29,28 +34,33 @@ class Machines(UnifiedKasse):
 				result = self.cursor.fetchone()
 				self.uid = result['uid']
 			except mysql.connector.Error as error:
+				logger.exception()
 				pass
 			except TypeError:
 				pass #No alias
 			return True
 		except mysql.connector.Error as error:
+			logger.exception('No connection to database')
 			return False
 
 	def start(self):
+		logger.debug('Starting session')
 		self.start_time = int(time.time())
 		try:
 			self.cursor.execute('INSERT INTO sessions (uid, machine, start_time) VALUES(%s, "revaluator", %s)', (self.uid, self.start_time))
 			self.db.commit()
 		except mysql.connector.Error as error:
-			print(error)
+			logger.exception('Could not start session')
 			pass
 
 	def disconnect(self):
+		logger.debug('Disconecting, ending session')
 		if self.start_time is not None:
 			try:
 				self.cursor.execute('UPDATE sessions SET end_time = %s WHERE uid=%s AND machine="revaluator" AND start_time=%s', (int(time.time()), self.uid, self.start_time))
 				self.db.commit()
 			except mysql.connector.Error as error:
+				logger.exception('Could not end session')
 				pass
 		self.cursor.close()
 		self.db.close()
@@ -58,15 +68,17 @@ class Machines(UnifiedKasse):
 	def getValue(self):
 		try:
 			self.cursor.execute('SELECT value FROM cards WHERE uid = %s', (self.uid, ))
-			print('SELECT value FROM cards WHERE uid = %s', (str(self.uid), ))
 			result = self.cursor.fetchone()
 			return result['value']
 		except mysql.connector.Error as error:
+			logger.exception()
 			return None
 		except TypeError:
+			logger.exception('Probably no account')
 			return None
 
 	def addValue(self, value, pulses):
+		logger.debug('Adding %.2f to account', value)
 		super().addValue(value, pulses)
 		try:
 			self.cursor.execute('UPDATE sessions SET price = price+%s WHERE uid=%s AND machine="revaluator" AND start_time=%s', (value, self.uid, self.start_time))
@@ -74,6 +86,7 @@ class Machines(UnifiedKasse):
 			self.db.commit()
 			return True
 		except mysql.connector.Error as error:
+			logger.exception('Add value failed: %08x, value %.2f, rolling back', self._uid, value)
 			self.db.rollback()
 		return False
 
@@ -87,8 +100,10 @@ class Machines(UnifiedKasse):
 					return transactions
 				transactions.append(Transaction(result['description'], result['price'], result['start_time']))
 		except mysql.connector.Error as error:
+			logger.exception()
 			return []
 		except TypeError:
+			logger.exception('Probably no account')
 			return []
 
 	def ping(self):
@@ -96,6 +111,7 @@ class Machines(UnifiedKasse):
 			self.db.ping(True)
 			return super().ping()
 		except mysql.connector.errors.OperationalError:
+			logger.exception('Connection to database lost, reconnecting failed')
 			return False
 
 if __name__ == '__main__':

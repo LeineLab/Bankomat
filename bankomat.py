@@ -13,7 +13,11 @@ from gpio_button import GPIOButton
 from mqtt_notify import MqttNotify
 from pn532pi import Pn532I2c, Pn532, pn532
 
+import logging
+
 import user_config
+
+logger = logging.getLogger(__name__)
 
 lcd = i2c.CharLCD('PCF8574', 0x27, port=1, charmap='A00', cols=20, rows=4)
 lcd.create_char(1, [0x11,0x00,0x11,0x11,0x11,0x11,0x0E,0x00]) #Ü
@@ -37,7 +41,9 @@ keypad = Keypad(cols, rows, buttons)
 bills = BillAcceptor(user_config.NV9_10_USBPORT)
 lcd.cursor_pos = (1, 0)
 lcd.write_string('Notes init')
+logger.debug('Initializing bill acceptor')
 if not bills.connect():
+	logger.error('Starting bill acceptor failed')
 	lcd.write_string('    [fail]')
 else:
 	lcd.write_string('      [OK]')
@@ -52,6 +58,7 @@ lcd.cursor_pos = (2, 0)
 lcd.write_string('NFC Init')
 
 try:
+	logger.debug('Initializing NFC reader')
 	pni2c = Pn532I2c(1)
 	nfc = Pn532(pni2c)
 
@@ -59,8 +66,10 @@ try:
 	nfc.setPassiveActivationRetries(0xFF)
 	nfc.SAMConfig()
 	lcd.write_string('        [OK]')
+	logger.debug('NFC init succeeded')
 except Exception:
 	lcd.write_string('      [fail]')
+	logger.exception('NFC init failed')
 	exit(1)
 
 UnifiedKasse([0], 'nfckasse') #init
@@ -70,8 +79,9 @@ def wait_for_tag():
 		MqttNotify.getInstance().setState('idle')
 	except:
 		pass
+	logger.debug('Starting NFC read loop')
 	donationButton.light(1)
-	buyButton.light(1)
+	buyButton.light(cardDispenser.check())
 	guestButton.light(1)
 	donationButton.reset()
 	buyButton.reset()
@@ -98,26 +108,32 @@ def wait_for_tag():
 			if not success:
 				uid = None
 		except:
+			logger.exception('NFC read failed')
 			uid = None
 		if user_config.GUEST_UID is not None and uid is None and guestButton.check():
+			logger.debug('Guest button pressed')
 			uid = user_config.GUEST_UID
 		if uid is not None:
+			logger.debug('Got UID %s', uid.hex())
 			donationButton.light(0)
 			guestButton.light(uid == user_config.GUEST_UID)
 			buyButton.light(0)
 			return uid
 		elif donationButton.check():
+			logger.debug('Donation button pressed')
 			buyButton.light(0)
 			guestButton.light(0)
 			donate()
 			return
 		elif keypad.poll() == 'L' or buyButton.check():
+			logger.debug('Buy button pressed')
 			guestButton.light(0)
 			donationButton.light(0)
 			buyCard()
 			return
 
 def waitForTransferTag():
+	logger.debug('Starting NFC read loop for transfer')
 	lcd.clear()
 	lcd.cursor_pos = (1, 0)
 	#                 12345678901234567890
@@ -131,15 +147,18 @@ def waitForTransferTag():
 			if not success:
 				uid = None
 		except:
+			logger.exception('NFC read failed')
 			uid = None
 		if uid is not None:
 			return uid
 	return None
 
 def buyCard():
+	logger.debug('Starting buying card loop')
 	buyButton.light(1)
 	lcd.backlight_enabled = True
 	if not cardDispenser.check():
+		logger.error('No more cards available in stacker')
 		lcd.clear()
 		#                 12345678901234567890
 		lcd.cursor_pos = (1, 0)
@@ -166,6 +185,7 @@ def buyCard():
 			ukasse = UnifiedKasse([0], 'cards')
 			ukasse.addValue(c, p)
 			if c >= 0.5:
+				logger.info('Inserted %.2f, dispensing card', c)
 				cardDispenser.dispense()
 				lcd.clear()
 				lcd.cursor_pos = (2, 0)
@@ -177,9 +197,11 @@ def buyCard():
 	lcd.clear()
 	lcd.cursor_pos = (2, 0)
 	lcd.write_string('Abgebrochen')
+	logger.debug('Buying card stopped due to user cancellation or timeout')
 	time.sleep(5)
 
 def chargeKonto(konto):
+	logger.debug('Starting account charging for %s', konto.getSource())
 	inserted = 0
 	oldVal = None
 	lastInserted = 0
@@ -211,6 +233,7 @@ def chargeKonto(konto):
 		if key == 'O' or (lastInserted == 0 and key == 'E'):
 			break
 		if not konto.ping():
+			logger.error('Lost connection to database')
 			lcd.clear()
 			#                 12345678901234567890
 			lcd.write_string('Verbindung zur')
@@ -224,6 +247,7 @@ def chargeKonto(konto):
 		if c is not None:
 			timeout = time.time() + 30
 			if c > 0:
+				loggger.info('Inserted coin value %.2f', c)
 				inserted = c
 				konto.addValue(c, p)
 				try:
@@ -231,16 +255,19 @@ def chargeKonto(konto):
 				except:
 					pass
 			else:
+				logger.error('Inserted unknown coin with %d pulses', p)
 				konto.addValue(0, p)
 				pass #unknown coin?
 			coin.enable()
 			val = konto.getValue()
 		bills.parse()
 		if bills.getEscrow():
+			logger.info('Inserted bill value %d, accepting', bills.getEscrow())
 			timeout = time.time() + 30
 			bills.acceptEscrow()
 		b = bills.getAndClearAcceptedValue()
 		if b:
+			logger.info('Stored bill value %d', b)
 			timeout = time.time() + 30
 			inserted = b
 			try:
@@ -256,12 +283,15 @@ def chargeKonto(konto):
 	c, p = coin.poll() # If not fast enough disabled
 	if c is not None:
 		if c > 0:
+			loggger.info('Inserted coin value %.2f after closing', c)
 			konto.addValue(c, p)
 		else:
+			logger.error('Inserted unknown coin with %d pulses after closing', p)
 			konto.addValue(0, p)
 	konto.disconnect()
 
 def donate():
+	logger.debug('Starting donation')
 	inserted = 0
 	oldVal = None
 	lastInserted = 0
@@ -292,6 +322,7 @@ def donate():
 		if key == 'O' or (lastInserted == 0 and key == 'E'):
 			break
 		if not konto.ping():
+			logger.error('Lost connection to database')
 			lcd.clear()
 			#                 12345678901234567890
 			lcd.write_string('Verbindung zur')
@@ -305,6 +336,7 @@ def donate():
 		if c is not None:
 			timeout = time.time() + 30
 			if c > 0:
+				loggger.info('Inserted coin value %.2f', c)
 				inserted = c
 				try:
 					MqttNotify.getInstance().setCoin(c)
@@ -313,15 +345,18 @@ def donate():
 				konto.addValue(c, p)
 				val += c
 			else:
+				logger.error('Inserted unknown coin with %d pulses after closing', p)
 				konto.addValue(0, p)
 				pass #unknown coin?
 			coin.enable()
 		bills.parse()
 		if bills.getEscrow():
+			logger.info('Inserted bill value %d, accepting', bills.getEscrow())
 			timeout = time.time() + 30
 			bills.acceptEscrow()
 		b = bills.getAndClearAcceptedValue()
 		if b:
+			logger.info('Stored bill value %d', b)
 			timeout = time.time() + 30
 			inserted = b
 			try:
@@ -337,9 +372,11 @@ def donate():
 	c, p = coin.poll() # If not fast enough disabled
 	if c is not None:
 		if c > 0:
+			loggger.info('Inserted coin value %.2f after closing', c)
 			val += c
 			konto.addValue(c, p)
 		else:
+			logger.error('Inserted unknown coin with %d pulses after closing', p)
 			konto.addValue(0, p)
 	lcd.clear()
 	lcd.cursor_pos = (2, 0)
@@ -359,6 +396,7 @@ def donate():
 
 
 def showTransactionDetails(t):
+	logger.debug('Showing transaction details')
 	lcd.clear()
 	lcd.write_string("%s" % t.getDate().strftime('%d.%m.%y %H:%M'))
 	lcd.cursor_pos = (1, 0)
@@ -370,6 +408,7 @@ def showTransactionDetails(t):
 		time.sleep(.1)
 
 def historyKonto(konto):
+	logger.debug('Showing transaction list')
 	offset = 0
 	cursor = 0
 	oldKey = keypad.poll()
@@ -431,6 +470,7 @@ def historyKonto(konto):
 			time.sleep(.1)
 
 def enterAmount(maxVal):
+	logger.debug('Requesting input of value, max: %.2f', maxVal)
 	lcd.clear()
 	lcd.write_string('Verfügbar:')
 	lcd.cursor_pos = (1, 0)
@@ -452,8 +492,10 @@ def enterAmount(maxVal):
 				if not len(val):
 					val = '0'
 			elif key == 'E':
+				logger.debug('Cancelled')
 				return None
 			elif key == 'O':
+				logger.debug('Input %.2f', float(val) / 100.0)
 				return float(val) / 100.0
 		if val != oldVal:
 			oldVal = val
@@ -482,27 +524,32 @@ def transferKonto(konto):
 			ret = konto.transfer(amount, tag)
 			lcd.clear()
 			if ret == 0:
+				logger.info('Transfer successful')
 				#                 12345678901234567890
 				lcd.write_string('    \x01berweisung')
 				lcd.cursor_pos = (1, 0)
 				lcd.write_string('    erfolgreich')
 			elif ret == -1:
+				logger.error('Tried to transfer more, than available')
 				lcd.write_string('Fehler')
 				lcd.cursor_pos = (1, 0)
 				lcd.write_string('Guthaben nicht')
 				lcd.cursor_pos = (2, 0)
 				lcd.write_string('ausreichend')
 			elif ret == 1:
+				logger.error('Tried to transfer to same account')
 				lcd.write_string('Fehler')
 				lcd.cursor_pos = (1, 0)
 				lcd.write_string('Gleiches Konto')
 			elif ret == 2:
+				logger.error('Receiving account not registered')
 				lcd.write_string('Fehler')
 				lcd.cursor_pos = (1, 0)
 				lcd.write_string('Gegenkonto fehlt')
 				lcd.cursor_pos = (2, 0)
 				lcd.write_string('Erst registrieren')
 			elif ret == 3:
+				logger.debug('Cancelled')
 				lcd.write_string('Fehler')
 				lcd.cursor_pos = (1, 0)
 				lcd.write_string('\x01berweisung abgebrochen')
@@ -511,6 +558,7 @@ def transferKonto(konto):
 			return ret == 0
 
 def inputPin():
+	logger.debug('Requesting pin')
 	lcd.clear()
 	lcd.cursor_pos = (1, 0)
 	#                 12345678901234567890
@@ -537,6 +585,7 @@ def inputPin():
 
 
 def mopupKonto(konto):
+	logger.debug('Starting account mopup, disconnecting remote database')
 	konto.disconnect()
 	try:
 		MqttNotify.getInstance().setState('mopup')
@@ -554,6 +603,7 @@ def mopupKonto(konto):
 		return
 	total = konto.getTotal()
 	if total == 0 and False:
+		logger.error('Trying to mopup empty account')
 		lcd.clear()
 		lcd.write_string('Dieses Konto ist')
 		lcd.cursor_pos = (1, 0)
@@ -588,6 +638,7 @@ def mopupKonto(konto):
 				time.sleep(.5)
 
 def subMenu(konto):
+	logger.debug('Submenu for %s', konto.getSource())
 	timeout = time.time() + 30
 	while timeout > time.time():
 		lcd.clear()
@@ -621,6 +672,7 @@ def subMenu(konto):
 				return
 
 def mainMenu(tag):
+	logger.debug('Main menu showing')
 	try:
 		MqttNotify.getInstance().setState('menu')
 	except:
@@ -674,6 +726,7 @@ def mainMenu(tag):
 			key = keypad.poll()
 			if key == '1':
 				if kasse is None:
+					logger.error('Remote database for nfckasse not available')
 					lcd.clear()
 					#                 12345678901234567890
 					lcd.write_string('Getränkekasse nicht')
@@ -686,6 +739,7 @@ def mainMenu(tag):
 					time.sleep(5)
 					break
 				elif gval is None:
+					logger.info('Trying to access nfckasse, not registered')
 					lcd.clear()
 					lcd.write_string('Kein Getränkekassen-')
 					lcd.cursor_pos = (1, 0)
@@ -702,6 +756,7 @@ def mainMenu(tag):
 					return
 			elif key == '2':
 				if machine is None:
+					logger.error('Remote database for machines not available')
 					lcd.clear()
 					lcd.write_string('Laserkonto nicht')
 					lcd.cursor_pos = (1, 0)
@@ -713,6 +768,7 @@ def mainMenu(tag):
 					time.sleep(5)
 					break
 				elif mval is None:
+					logger.info('Trying to access nfckasse, not registered')
 					lcd.clear()
 					lcd.write_string('Laserkonto nicht')
 					lcd.cursor_pos = (1, 0)

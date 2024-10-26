@@ -5,6 +5,10 @@ from email_sender import emailSender
 import user_config
 from mqtt_notify import MqttNotify
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 class Transaction:
 	def __init__(self, desc, value, date):
 		self.desc = desc
@@ -25,6 +29,7 @@ class UnifiedKasse:
 	_cursor = None
 
 	def _connect(self):
+		logger.debug('Tring to connect to internal database')
 		try:
 			UnifiedKasse._bankomatDB = mysql.connector.connect(
 				host = user_config.LOCALDB_HOST,
@@ -36,9 +41,11 @@ class UnifiedKasse:
 			UnifiedKasse._cursor = UnifiedKasse._bankomatDB.cursor(dictionary=True)
 			UnifiedKasse._cursor.execute('SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED')
 			for k in ['nfckasse', 'machines', 'donations', 'cards']:
+				# Updating MQTT values
 				UnifiedKasse([0], k).getTotal()
 			return True
 		except mysql.connector.Error:
+			logger.exception('Could not connect to internal database')
 			return False
 
 	def __init__(self, uid, source):
@@ -50,12 +57,17 @@ class UnifiedKasse:
 		if UnifiedKasse._bankomatDB is None:
 			if not self._connect():
 				raise Exception('UnifiedKasse DB Connection failed')
+		logger.debug('Initialized UnifiedKasse for uid %08x', uid)
 		try:
 			self.ping()
 		except:
 			pass
 
+	def getSource(self):
+		return self.source
+
 	def isAdmin(self):
+		logger.debug('Checking if user is admin')
 		try:
 			UnifiedKasse._cursor.execute('SELECT uid FROM admins WHERE uid = %s', (self._uid,))
 			result = self._cursor.fetchone()
@@ -66,6 +78,7 @@ class UnifiedKasse:
 			return False
 
 	def getAdminName(self):
+		logger.debug('Resolving user name')
 		try:
 			UnifiedKasse._cursor.execute('SELECT name FROM admins WHERE uid = %s', (self._uid,))
 			result = self._cursor.fetchone()
@@ -79,13 +92,16 @@ class UnifiedKasse:
 		return sha256(pin.encode('utf-8')).hexdigest()
 
 	def checkPin(self, pin):
+		logger.debug('Checking pin')
 		try:
 			UnifiedKasse._cursor.execute('SELECT uid FROM admins WHERE uid = %s AND pin = %s', (self._uid, UnifiedKasse.generatePin(pin)))
 			result = self._cursor.fetchone()
 			return 'uid' in result
 		except mysql.connector.Error as error:
+			logger.exception()
 			return False
 		except TypeError as error:
+			logger.exception('Possibly entered wrong pin')
 			return False
 
 	def getTotal(self):
@@ -98,8 +114,10 @@ class UnifiedKasse:
 				pass # No connection
 			return result['value']
 		except mysql.connector.Error as error:
+			logger.exception()
 			return 0
 		except TypeError:
+			logger.exception()
 			return 0
 
 	def addValue(self, value, pulses):
@@ -116,6 +134,7 @@ class UnifiedKasse:
 					pass
 			return True
 		except mysql.connector.Error as error:
+			logger.exception('Add value for source %s failed: %08x, value %.2f', self.source, self._uid, value)
 			return False
 
 	def mopupValue(self, value):
@@ -130,6 +149,7 @@ class UnifiedKasse:
 				pass
 			return True
 		except mysql.connector.Error as error:
+			logger.exception('Mopup failed')
 			return False
 
 	def start(self):
