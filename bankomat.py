@@ -531,7 +531,7 @@ def inputPin():
 				return pin
 			if pin != oldPin:
 				oldPin = pin
-				lcd.cursor_pos = (1, 8)
+				lcd.cursor_pos = (2, 8)
 				lcd.write_string(('*' * len(pin))+(' ' * (4 - len(pin))))
 		oldKey = key
 
