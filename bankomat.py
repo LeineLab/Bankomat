@@ -247,7 +247,7 @@ def chargeKonto(konto):
 		if c is not None:
 			timeout = time.time() + 30
 			if c > 0:
-				loggger.info('Inserted coin value %.2f', c)
+				logger.info('Inserted coin value %.2f', c)
 				inserted = c
 				konto.addValue(c, p)
 				try:
@@ -283,7 +283,7 @@ def chargeKonto(konto):
 	c, p = coin.poll() # If not fast enough disabled
 	if c is not None:
 		if c > 0:
-			loggger.info('Inserted coin value %.2f after closing', c)
+			logger.info('Inserted coin value %.2f after closing', c)
 			konto.addValue(c, p)
 		else:
 			logger.error('Inserted unknown coin with %d pulses after closing', p)
@@ -336,7 +336,7 @@ def donate():
 		if c is not None:
 			timeout = time.time() + 30
 			if c > 0:
-				loggger.info('Inserted coin value %.2f', c)
+				logger.info('Inserted coin value %.2f', c)
 				inserted = c
 				try:
 					MqttNotify.getInstance().setCoin(c)
@@ -372,7 +372,7 @@ def donate():
 	c, p = coin.poll() # If not fast enough disabled
 	if c is not None:
 		if c > 0:
-			loggger.info('Inserted coin value %.2f after closing', c)
+			logger.info('Inserted coin value %.2f after closing', c)
 			val += c
 			konto.addValue(c, p)
 		else:
