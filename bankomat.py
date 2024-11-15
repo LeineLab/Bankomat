@@ -17,6 +17,8 @@ import logging
 
 import user_config
 
+logging.basicConfig()
+logging.getLogger().setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
 lcd = i2c.CharLCD('PCF8574', 0x27, port=1, charmap='A00', cols=20, rows=4)
@@ -257,7 +259,6 @@ def chargeKonto(konto):
 			else:
 				logger.error('Inserted unknown coin with %d pulses', p)
 				konto.addValue(0, p)
-				pass #unknown coin?
 			coin.enable()
 			val = konto.getValue()
 		bills.parse()
@@ -274,7 +275,9 @@ def chargeKonto(konto):
 				MqttNotify.getInstance().setNote(b)
 			except:
 				pass
+			logger.info('Adding value to account')
 			konto.addValue(b, None)
+			logger.info('Fetching new value')
 			val = konto.getValue()
 		time.sleep(.1)
 	bills.disableAcceptance()
