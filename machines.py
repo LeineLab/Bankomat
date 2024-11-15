@@ -74,7 +74,7 @@ class Machines(UnifiedKasse):
 			logger.exception()
 			return None
 		except TypeError:
-			logger.exception('Probably no account')
+			#logger.exception('Probably no account')
 			return None
 
 	def addValue(self, value, pulses):

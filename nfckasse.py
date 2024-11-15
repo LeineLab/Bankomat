@@ -47,11 +47,11 @@ class NFCKasse(UnifiedKasse):
 			logger.exception()
 			return None
 		except TypeError:
-			logger.exception('Probably no account')
+			#logger.exception('Probably no account')
 			return None
 
 	def addValue(self, value, pulses):
-		logger.debug('Adding %.2f to account', value)
+		logger.info('Adding %.2f to account', value)
 		super().addValue(value, pulses)
 		try:
 			self.cursor.execute('INSERT INTO transactions (uid, value, tdate) VALUES (%s, %s, NOW())', (self.uid, value))
