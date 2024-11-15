@@ -147,6 +147,7 @@ class UnifiedKasse:
 				email.report('Abschöpfung %s' % (self.source,), "Soeben hat %s eine Abschöpfung in Höhe von %.2f Euro vorgenommen" % (self.getAdminName(), value))
 			except:
 				pass
+			self.getTotal() # update MQTT sensors
 			return True
 		except mysql.connector.Error as error:
 			logger.exception('Mopup failed')
