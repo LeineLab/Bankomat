@@ -21,7 +21,7 @@ class CoinPulse:
 			if p in self._value_for_pulses:
 				ret = self._value_for_pulses[self._pulses]
 			else:
-				ret = -1
+				ret = 0
 			self._pulses = 0
 			self._last_pulse = 0
 		return ret, p

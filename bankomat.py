@@ -112,6 +112,10 @@ def wait_for_tag():
 		except:
 			logger.exception('NFC read failed')
 			uid = None
+		light = int(time.time()) % 3
+		donationButton.light(light == 0)
+		buyButton.light(light == 1 and cardDispenser.check())
+		guestButton.light(light == 2)
 		if user_config.GUEST_UID is not None and uid is None and guestButton.check():
 			logger.debug('Guest button pressed')
 			uid = user_config.GUEST_UID
@@ -488,7 +492,7 @@ def enterAmount(maxVal):
 		key = keypad.poll()
 		if key is not None and oldKey != key:
 			if key >= '0' and key <= '9':
-				if float(val + key) / 100.0 <= maxVal:
+				if round(float(val + key) / 100.0, 2) <= maxVal:
 					val += key
 			elif key == 'C':
 				val = val[:-1]
@@ -499,7 +503,7 @@ def enterAmount(maxVal):
 				return None
 			elif key == 'O':
 				logger.debug('Input %.2f', float(val) / 100.0)
-				return float(val) / 100.0
+				return round(float(val) / 100.0, 2)
 		if val != oldVal:
 			oldVal = val
 			lcd.cursor_pos = (3, 0)
@@ -518,7 +522,7 @@ def transferKonto(konto):
 		tag = waitForTransferTag()
 		if tag is None:
 			lcd.clear()
-			lcd.cursor(2, 0)
+			lcd.cursor_pos = (2, 0)
 			#                 12345678901234567890
 			lcd.write_string('    Abgebrochen')
 			time.sleep(5)

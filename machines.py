@@ -69,7 +69,7 @@ class Machines(UnifiedKasse):
 		try:
 			self.cursor.execute('SELECT value FROM cards WHERE uid = %s', (self.uid, ))
 			result = self.cursor.fetchone()
-			return result['value']
+			return float(result['value'])
 		except mysql.connector.Error as error:
 			logger.exception()
 			return None

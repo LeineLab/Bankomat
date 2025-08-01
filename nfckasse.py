@@ -42,7 +42,7 @@ class NFCKasse(UnifiedKasse):
 		try:
 			self.cursor.execute('SELECT value FROM cards WHERE uid = %s', (self.uid, ))
 			result = self.cursor.fetchone()
-			return result['value']
+			return round(float(result['value']), 2)
 		except mysql.connector.Error as error:
 			logger.exception()
 			return None
