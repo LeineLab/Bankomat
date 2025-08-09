@@ -5,3 +5,4 @@ pyserial
 ha-mqtt-discoverable
 RPLCD
 smbus
+pytz
