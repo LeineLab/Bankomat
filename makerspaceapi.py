@@ -43,9 +43,9 @@ class MakerSpaceAPI:
     @staticmethod
     def _base():
         return f'{MakerSpaceAPI._api_url}/api/v1'
-    
+
     @staticmethod
-    def ping(self):
+    def ping():
         '''
         Check the public health endpoint to verify all actions can be processed.
         Does not verify that the used token is still valid!
