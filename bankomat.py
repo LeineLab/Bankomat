@@ -4,18 +4,18 @@ from RPLCD import i2c
 from keypad import Keypad
 from sio_acceptor import BillAcceptor
 from coin_pulse import CoinPulse
-from machines import Machines
-from nfckasse import NFCKasse
-from unified_kasse import UnifiedKasse
 from door import Door
 from card_dispenser import CardDispenser
 from gpio_button import GPIOButton
-from mqtt_notify import MqttNotify
 from pn532pi import Pn532I2c, Pn532, pn532
 
 import logging
 
 import user_config
+from makerspaceapi import MakerSpaceAPI, Transaction
+
+# Configure API connection for all kasse classes
+MakerSpaceAPI.configure(user_config.API_URL, user_config.API_TOKEN)
 
 logging.basicConfig()
 logging.getLogger().setLevel(logging.INFO)
@@ -74,13 +74,16 @@ except Exception:
 	logger.exception('NFC init failed')
 	exit(1)
 
-UnifiedKasse([0], 'nfckasse') #init
+def showConnectionFailure():
+	lcd.clear()
+	#                 12345678901234567890
+	lcd.write_string('Verbindung zur')
+	lcd.cursor_pos = (1, 0)
+	lcd.write_string('API verloren.')
+	lcd.cursor_pos = (2, 0)
+	lcd.write_string('Vorgang abgebrochen')
 
 def wait_for_tag():
-	try:
-		MqttNotify.getInstance().setState('idle')
-	except:
-		pass
 	logger.debug('Starting NFC read loop')
 	donationButton.light(1)
 	buyButton.light(cardDispenser.check())
@@ -173,10 +176,7 @@ def buyCard():
 		lcd.write_string('     verfügbar.')
 		time.sleep(5)
 		return
-	try:
-		MqttNotify.getInstance().setState('buying')
-	except:
-		pass
+	account = MakerSpaceAPI(user_config.CARDS_TARGET)
 	lcd.clear()
 	lcd.write_string('Neue Karte: 50ct')
 	lcd.cursor_pos = (1, 0)
@@ -188,8 +188,7 @@ def buyCard():
 			coin.inhibit()
 		c, p = coin.poll()
 		if c is not None:
-			ukasse = UnifiedKasse([0], 'cards')
-			ukasse.addValue(c, p)
+			account.addValue(c, p)
 			if c >= 0.5:
 				logger.info('Inserted %.2f, dispensing card', c)
 				cardDispenser.dispense()
@@ -206,27 +205,19 @@ def buyCard():
 	logger.debug('Buying card stopped due to user cancellation or timeout')
 	time.sleep(5)
 
-def chargeKonto(konto):
+def chargeKonto(konto : MakerSpaceAPI):
 	logger.debug('Starting account charging for %s', konto.getSource())
 	inserted = 0
 	oldVal = None
 	lastInserted = 0
-	val = konto.getValue()
+	val = konto.getCardValue()
 	coin.enable()
 	bills.enableAcceptance()
-	konto.start()
-	try:
-		MqttNotify.getInstance().setState('charging')
-	except:
-		pass
 	timeout = time.time() + 30
 	while timeout > time.time():
 		if oldVal != val or lastInserted != inserted:
 			lcd.cursor_pos = (0, 0)
-			if isinstance(konto, NFCKasse):
-				lcd.write_string('   Getränkekonto:   ')
-			else:
-				lcd.write_string('     Laserkonto:    ')
+			lcd.write_string('   Getränkekonto:   ')
 			lcd.cursor_pos = (1, 0)
 			lcd.write_string('Guthaben:% 9.2f \x03' % val)
 			lcd.cursor_pos = (2, 0)
@@ -238,15 +229,9 @@ def chargeKonto(konto):
 		key = keypad.poll()
 		if key == 'O' or (lastInserted == 0 and key == 'E'):
 			break
-		if not konto.ping():
+		if not MakerSpaceAPI.ping():
 			logger.error('Lost connection to database')
-			lcd.clear()
-			#                 12345678901234567890
-			lcd.write_string('Verbindung zur')
-			lcd.cursor_pos = (1, 0)
-			lcd.write_string('Datenbank verloren.')
-			lcd.cursor_pos = (2, 0)
-			lcd.write_string('Vorgang abgebrochen')
+			showConnectionFailure()
 			time.sleep(5)
 			break
 		c, p = coin.poll()
@@ -255,16 +240,18 @@ def chargeKonto(konto):
 			if c > 0:
 				logger.info('Inserted coin value %.2f', c)
 				inserted = c
-				konto.addValue(c, p)
-				try:
-					MqttNotify.getInstance().setCoin(c)
-				except:
-					pass
+				ret = konto.addCardValue(c)
+				if ret is None:
+					showConnectionFailure()
+					lcd.cursor_pos = (3, 0)
+					lcd.write_string('Bitte melden!')
+					time.sleep(5)
+					break
+				val = ret
 			else:
 				logger.error('Inserted unknown coin with %d pulses', p)
-				konto.addValue(0, p)
+				#konto.addCardValue(0)
 			coin.enable()
-			val = konto.getValue()
 		bills.parse()
 		if bills.getEscrow():
 			logger.info('Inserted bill value %d, accepting', bills.getEscrow())
@@ -275,42 +262,38 @@ def chargeKonto(konto):
 			logger.info('Stored bill value %d', b)
 			timeout = time.time() + 30
 			inserted = b
-			try:
-				MqttNotify.getInstance().setNote(b)
-			except:
-				pass
 			logger.info('Adding value to account')
-			konto.addValue(b, None)
-			logger.info('Fetching new value')
-			val = konto.getValue()
+			ret = konto.addCardValue(b)
+			if ret is None:
+				showConnectionFailure()
+				lcd.cursor_pos = (3, 0)
+				lcd.write_string('Bitte melden!')
+				time.sleep(5)
+				break
+			val = ret
 		time.sleep(.1)
 	bills.disableAcceptance()
 	coin.inhibit()
 	time.sleep(1)
-	c, p = coin.poll() # If not fast enough disabled
+	c, p = coin.poll() # If not disabled fast enough
 	if c is not None:
 		if c > 0:
 			logger.info('Inserted coin value %.2f after closing', c)
-			konto.addValue(c, p)
+			konto.addCardValue(c)
 		else:
 			logger.error('Inserted unknown coin with %d pulses after closing', p)
-			konto.addValue(0, p)
-	konto.disconnect()
+			konto.addCardValue(0)
 
 def donate():
 	logger.debug('Starting donation')
 	inserted = 0
 	oldVal = None
 	lastInserted = 0
-	konto = UnifiedKasse([0], 'donations')
+	konto = MakerSpaceAPI(user_config.DONATION_TARGET)
 	coin.enable()
 	bills.enableAcceptance()
 	val = 0
 	lcd.backlight_enabled = True
-	try:
-		MqttNotify.getInstance().setState('donating')
-	except:
-		pass
 	timeout = time.time() + 30
 	while timeout > time.time():
 		if oldVal != val or lastInserted != inserted:
@@ -328,13 +311,13 @@ def donate():
 		key = keypad.poll()
 		if key == 'O' or (lastInserted == 0 and key == 'E'):
 			break
-		if not konto.ping():
+		if not MakerSpaceAPI.ping():
 			logger.error('Lost connection to database')
 			lcd.clear()
 			#                 12345678901234567890
 			lcd.write_string('Verbindung zur')
 			lcd.cursor_pos = (1, 0)
-			lcd.write_string('Datenbank verloren.')
+			lcd.write_string('API verloren.')
 			lcd.cursor_pos = (2, 0)
 			lcd.write_string('Vorgang abgebrochen')
 			time.sleep(5)
@@ -345,15 +328,24 @@ def donate():
 			if c > 0:
 				logger.info('Inserted coin value %.2f', c)
 				inserted = c
-				try:
-					MqttNotify.getInstance().setCoin(c)
-				except:
-					pass
-				konto.addValue(c, p)
-				val += c
+				if konto.addValue(c):
+					val += c
+				else:
+					logger.error('Adding coin value %.2f to donations account failed!', c)
+					lcd.clear()
+					#                 12345678901234567890
+					lcd.write_string('Verbindung zur')
+					lcd.cursor_pos = (1, 0)
+					lcd.write_string('API verloren.')
+					lcd.cursor_pos = (2, 0)
+					lcd.write_string('Vorgang abgebrochen')
+					lcd.cursor_pos = (3, 0)
+					lcd.write_string('Bitte melden!')
+					time.sleep(5)
+					break
 			else:
-				logger.error('Inserted unknown coin with %d pulses after closing', p)
-				konto.addValue(0, p)
+				logger.error('Inserted unknown coin with %d pulses.', p)
+				#konto.addValue(0)
 				pass #unknown coin?
 			coin.enable()
 		bills.parse()
@@ -366,12 +358,8 @@ def donate():
 			logger.info('Stored bill value %d', b)
 			timeout = time.time() + 30
 			inserted = b
-			try:
-				MqttNotify.getInstance().setNote(b)
-			except:
-				pass
 			val += b
-			konto.addValue(b, None)
+			konto.addValue(b)
 		time.sleep(.1)
 	bills.disableAcceptance()
 	coin.inhibit()
@@ -381,10 +369,10 @@ def donate():
 		if c > 0:
 			logger.info('Inserted coin value %.2f after closing', c)
 			val += c
-			konto.addValue(c, p)
+			konto.addValue(c)
 		else:
 			logger.error('Inserted unknown coin with %d pulses after closing', p)
-			konto.addValue(0, p)
+			#konto.addValue(0)
 	lcd.clear()
 	lcd.cursor_pos = (2, 0)
 	if val == 0:
@@ -402,7 +390,7 @@ def donate():
 	time.sleep(3)
 
 
-def showTransactionDetails(t):
+def showTransactionDetails(t : Transaction):
 	logger.debug('Showing transaction details')
 	lcd.clear()
 	lcd.write_string("%s" % t.getDate().strftime('%d.%m.%y %H:%M'))
@@ -414,7 +402,7 @@ def showTransactionDetails(t):
 	while keypad.poll() != 'E' and timeout > time.time():
 		time.sleep(.1)
 
-def historyKonto(konto):
+def historyKonto(konto : MakerSpaceAPI):
 	logger.debug('Showing transaction list')
 	offset = 0
 	cursor = 0
@@ -423,10 +411,6 @@ def historyKonto(konto):
 	numTransactions = len(transactions)
 	oldTransactions = None
 	timeout = time.time() + 30
-	try:
-		MqttNotify.getInstance().setState('history')
-	except:
-		pass
 	while timeout > time.time():
 		if transactions != oldTransactions:
 			oldTransactions = transactions
@@ -476,7 +460,7 @@ def historyKonto(konto):
 		else:
 			time.sleep(.1)
 
-def enterAmount(maxVal):
+def enterAmount(maxVal : float):
 	logger.debug('Requesting input of value, max: %.2f', maxVal)
 	lcd.clear()
 	lcd.write_string('Verfügbar:')
@@ -510,11 +494,7 @@ def enterAmount(maxVal):
 			lcd.write_string('%18.2f \x03' % (float(val) / 100.0))
 		oldKey = key
 
-def transferKonto(konto):
-	try:
-		MqttNotify.getInstance().setState('transfer')
-	except:
-		pass
+def transferAccount(konto : MakerSpaceAPI):
 	amount = enterAmount(konto.getValue())
 	if amount is None:
 		return False
@@ -560,7 +540,6 @@ def transferKonto(konto):
 				lcd.write_string('Fehler')
 				lcd.cursor_pos = (1, 0)
 				lcd.write_string('\x01berweisung abgebrochen')
-			konto.disconnect()
 			time.sleep(5)
 			return ret == 0
 
@@ -590,14 +569,8 @@ def inputPin():
 				lcd.write_string(('*' * len(pin))+(' ' * (4 - len(pin))))
 		oldKey = key
 
-
-def mopupKonto(konto):
-	logger.debug('Starting account mopup, disconnecting remote database')
-	konto.disconnect()
-	try:
-		MqttNotify.getInstance().setState('mopup')
-	except:
-		pass
+def withdrawAccount(konto : MakerSpaceAPI):
+	logger.debug('Starting account mopup')
 	conf = False
 	for i in range(3):
 		pin = inputPin()
@@ -609,7 +582,8 @@ def mopupKonto(konto):
 	if not conf:
 		return
 	total = konto.getTotal()
-	if total == 0 and False:
+	''' Disabled, so door can still be opened even if all accounts are at 0
+	if total == 0:
 		logger.error('Trying to mopup empty account')
 		lcd.clear()
 		lcd.write_string('Dieses Konto ist')
@@ -617,19 +591,30 @@ def mopupKonto(konto):
 		lcd.write_string(' leer.')
 		time.sleep(5)
 		return
+	'''
 	door.open()
 	amount = enterAmount(total)
 	if amount is None or amount == 0:
 		lcd.clear()
 		lcd.write_string('Abgebrochen')
 		time.sleep(5)
-	elif konto.mopupValue(amount):
+	elif konto.withdrawValue(amount):
 		lcd.clear()
 		lcd.write_string('Abschöpfung von')
 		lcd.cursor_pos = (1, 0)
 		lcd.write_string('%18.2f \x03' % amount)
 		lcd.cursor_pos = (2, 0)
 		lcd.write_string('erfolgreich')
+		try:
+			from email_sender import emailSender
+			email = emailSender()
+			name = konto.getAdminName()
+			email.report(
+				f'Abschöpfung {konto.getTarget()}',
+				'Soeben hat %s eine Abschöpfung in Höhe von %.2f Euro vorgenommen' % (name, amount),
+			)
+		except Exception:
+			pass
 	else:
 		lcd.clear()
 		lcd.write_string('Abschöpfung')
@@ -669,36 +654,29 @@ def subMenu(konto):
 				timeout = time.time() + 30
 				break
 			elif key == '7' and isinstance(konto, NFCKasse):
-				transferKonto(konto)
+				transferAccount(konto)
 				return
 			elif key == '8' and konto.isAdmin():
-				mopupKonto(konto)
+				withdrawAccount(konto)
 				return
 			elif time.time() > timeout or key == 'E':
-				konto.disconnect()
 				return
 
 def mainMenu(tag):
 	logger.debug('Main menu showing')
-	try:
-		MqttNotify.getInstance().setState('menu')
-	except:
-		pass
-	gval = None
-	mval = None
-	kasse = NFCKasse(tag)
-	if not kasse.connect():
-		kasse = None
-	else:
-		gval = kasse.getValue()
-		if user_config.GUEST_UID is not None and tag == user_config.GUEST_UID:
-			chargeKonto(kasse)
-			return
-	machine = Machines(tag)
-	if not machine.connect():
-		machine = None
-	else:
-		mval = machine.getValue()
+	
+	if not MakerSpaceAPI.ping():
+		lcd.clear()
+		lcd.cursor_pos = (0, 0)
+		lcd.write_string('API nicht erreichbar')
+		time.sleep(3)
+		return
+	
+	kasse = MakerSpaceAPI(user_config.ACCOUNT_TARGET, tag)
+	cardvalue = kasse.getCardValue()
+	if user_config.GUEST_UID is not None and tag == user_config.GUEST_UID:
+		chargeKonto(kasse)
+		return
 	timeout = time.time() + 30
 	while timeout > time.time():
 		timeout = time.time() + 30
@@ -707,45 +685,23 @@ def mainMenu(tag):
 		if kasse is None:
 			#                12345678901234567890
 			lcd.write_string('x Getränkekasse N/A')
-		elif gval is not None:
-			print("Getränkekonto gefunden %.2f" % gval)
+		elif cardvalue is not None:
+			print("Getränkekonto gefunden %.2f" % cardvalue)
 			lcd.write_string('1 Getränkekonto')
 		else:
-			lcd.write_string('x Kein Getränkekonto')
-
-		lcd.cursor_pos = (1, 0)
-		if machine is None:
-			lcd.write_string('x Laserkasse N/A')
-		elif mval is not None:
-			lcd.write_string('2 Laserkonto')
-			print("Maschinenkonto gefunden %.2f" % mval)
-		else:
-			lcd.write_string('x Kein Laserkonto')
-		donations = UnifiedKasse(tag, 'donations')
+			lcd.write_string('1 Kein Getränkekonto')
+		
 		lcd.cursor_pos = (2, 0)
-		if donations.isAdmin():
+		if kasse.isAdmin():
 			lcd.write_string('3 Spenden entnehmen')
-		cards = UnifiedKasse(tag, 'cards')
+		
 		lcd.cursor_pos = (3, 0)
-		if cards.isAdmin():
+		if kasse.isAdmin():
 			lcd.write_string('4 Kartenkäufe entn.')
 		while True:
 			key = keypad.poll()
 			if key == '1':
-				if kasse is None:
-					logger.error('Remote database for nfckasse not available')
-					lcd.clear()
-					#                 12345678901234567890
-					lcd.write_string('Getränkekasse nicht')
-					lcd.cursor_pos = (1, 0)
-					lcd.write_string('verfügbar. Bitte')
-					lcd.cursor_pos = (2, 0)
-					lcd.write_string('später noch einmal')
-					lcd.cursor_pos = (3, 0)
-					lcd.write_string('versuchen.')
-					time.sleep(5)
-					break
-				elif gval is None:
+				if cardvalue is None:
 					logger.info('Trying to access nfckasse, not registered')
 					lcd.clear()
 					lcd.write_string('Kein Getränkekassen-')
@@ -756,58 +712,18 @@ def mainMenu(tag):
 					time.sleep(5)
 					break
 				else:
-					if machine is not None:
-						machine.disconnect()
 					if key == '1':
 						subMenu(kasse)
 					return
-			elif key == '2':
-				if machine is None:
-					logger.error('Remote database for machines not available')
-					lcd.clear()
-					lcd.write_string('Laserkonto nicht')
-					lcd.cursor_pos = (1, 0)
-					lcd.write_string('verfügbar. Bitte')
-					lcd.cursor_pos = (2, 0)
-					lcd.write_string('später noch einmal')
-					lcd.cursor_pos = (3, 0)
-					lcd.write_string('versuchen.')
-					time.sleep(5)
-					break
-				elif mval is None:
-					logger.info('Trying to access nfckasse, not registered')
-					lcd.clear()
-					lcd.write_string('Laserkonto nicht')
-					lcd.cursor_pos = (1, 0)
-					lcd.write_string('existent. Bitte')
-					lcd.cursor_pos = (2, 0)
-					lcd.write_string('an Luca wenden.')
-					time.sleep(5)
-					break
-				else:
-					if kasse is not None:
-						kasse.disconnect()
-					subMenu(machine)
-					return
-			elif key == '3' and donations.isAdmin():
-				if kasse is not None:
-					kasse.disconnect()
-				if machine is not None:
-					machine.disconnect()
-				mopupKonto(donations)
+			elif key == '3' and konto.isAdmin():
+				kasse.changeTarget(user_config.DONATION_TARGET)
+				withdrawAccount(kasse)
 				return
-			elif key == '4' and cards.isAdmin():
-				if kasse is not None:
-					kasse.disconnect()
-				if machine is not None:
-					machine.disconnect()
-				mopupKonto(cards)
+			elif key == '4' and konto.isAdmin():
+				kasse.changeTarget(user_config.CARDS_TARGET)
+				withdrawAccount(cards)
 				return
 			elif key == 'E' or time.time() > timeout:
-				if kasse is not None:
-					kasse.disconnect()
-				if machine is not None:
-					machine.disconnect()
 				return
 
 time.sleep(1)
