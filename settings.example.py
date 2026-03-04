@@ -1,4 +1,4 @@
-# Bankomat user_config — copy to user_config.py and fill in your values
+# Bankomat user_config - copy to user_config.py and fill in your values
 
 # MakerSpaceAPI connection
 API_URL   = 'http://localhost:8000'
