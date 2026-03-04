@@ -11,11 +11,11 @@ from pn532pi import Pn532I2c, Pn532, pn532
 
 import logging
 
-import user_config
+import settings
 from makerspaceapi import MakerSpaceAPI, Transaction
 
 # Configure API connection for all kasse classes
-MakerSpaceAPI.configure(user_config.API_URL, user_config.API_TOKEN)
+MakerSpaceAPI.configure(settings.API_URL, settings.API_TOKEN)
 
 logging.basicConfig()
 logging.getLogger().setLevel(logging.INFO)
@@ -33,14 +33,14 @@ coin = CoinPulse(17, 22, {2:0.5, 3:1, 4:2})
 cols = [26, 19, 13,  6]
 rows = [21, 20, 16, 12]
 buttons = [
-        ['1',   '2',    '3',    'E'],
-        ['4',   '5',    '6',    'C'],
-        ['7',   '8',    '9',    'L'],
-        ['U',   '0',    'D',    'O']
+	['1', '2', '3', 'E'],
+	['4', '5', '6', 'C'],
+	['7', '8', '9', 'L'],
+	['U', '0', 'D', 'O']
 ]
 keypad = Keypad(cols, rows, buttons)
 
-bills = BillAcceptor(user_config.NV9_10_USBPORT)
+bills = BillAcceptor(settings.NV9_10_USBPORT)
 lcd.cursor_pos = (1, 0)
 lcd.write_string('Notes init')
 logger.debug('Initializing bill acceptor')
@@ -99,7 +99,7 @@ def wait_for_tag():
 	lcd.cursor_pos = (1, 0)
 	lcd.write_string(' halten, alternativ ')
 	lcd.cursor_pos = (2, 0)
-	if user_config.GUEST_UID is not None:
+	if settings.GUEST_UID is not None:
 		lcd.write_string(' Spenden, Gast oder ')
 		lcd.cursor_pos = (3, 0)
 		lcd.write_string('Karte kaufen drücken')
@@ -119,13 +119,13 @@ def wait_for_tag():
 		donationButton.light(light == 0)
 		buyButton.light(light == 1 and cardDispenser.check())
 		guestButton.light(light == 2)
-		if user_config.GUEST_UID is not None and uid is None and guestButton.check():
+		if settings.GUEST_UID is not None and uid is None and guestButton.check():
 			logger.debug('Guest button pressed')
-			uid = user_config.GUEST_UID
+			uid = settings.GUEST_UID
 		if uid is not None:
 			logger.debug('Got UID %s', uid.hex())
 			donationButton.light(0)
-			guestButton.light(uid == user_config.GUEST_UID)
+			guestButton.light(uid == settings.GUEST_UID)
 			buyButton.light(0)
 			return uid
 		elif donationButton.check():
@@ -176,7 +176,7 @@ def buyCard():
 		lcd.write_string('     verfügbar.')
 		time.sleep(5)
 		return
-	account = MakerSpaceAPI(user_config.CARDS_TARGET)
+	account = MakerSpaceAPI(settings.CARDS_TARGET)
 	lcd.clear()
 	lcd.write_string('Neue Karte: 50ct')
 	lcd.cursor_pos = (1, 0)
@@ -205,7 +205,7 @@ def buyCard():
 	logger.debug('Buying card stopped due to user cancellation or timeout')
 	time.sleep(5)
 
-def chargeKonto(konto : MakerSpaceAPI):
+def topupAccount(konto : MakerSpaceAPI):
 	logger.debug('Starting account charging for %s', konto.getSource())
 	inserted = 0
 	oldVal = None
@@ -289,7 +289,7 @@ def donate():
 	inserted = 0
 	oldVal = None
 	lastInserted = 0
-	konto = MakerSpaceAPI(user_config.DONATION_TARGET)
+	konto = MakerSpaceAPI(settings.DONATION_TARGET)
 	coin.enable()
 	bills.enableAcceptance()
 	val = 0
@@ -313,13 +313,7 @@ def donate():
 			break
 		if not MakerSpaceAPI.ping():
 			logger.error('Lost connection to database')
-			lcd.clear()
-			#                 12345678901234567890
-			lcd.write_string('Verbindung zur')
-			lcd.cursor_pos = (1, 0)
-			lcd.write_string('API verloren.')
-			lcd.cursor_pos = (2, 0)
-			lcd.write_string('Vorgang abgebrochen')
+			showConnectionFailure()
 			time.sleep(5)
 			break
 		c, p = coin.poll()
@@ -332,13 +326,7 @@ def donate():
 					val += c
 				else:
 					logger.error('Adding coin value %.2f to donations account failed!', c)
-					lcd.clear()
-					#                 12345678901234567890
-					lcd.write_string('Verbindung zur')
-					lcd.cursor_pos = (1, 0)
-					lcd.write_string('API verloren.')
-					lcd.cursor_pos = (2, 0)
-					lcd.write_string('Vorgang abgebrochen')
+					showConnectionFailure()
 					lcd.cursor_pos = (3, 0)
 					lcd.write_string('Bitte melden!')
 					time.sleep(5)
@@ -358,8 +346,15 @@ def donate():
 			logger.info('Stored bill value %d', b)
 			timeout = time.time() + 30
 			inserted = b
-			val += b
-			konto.addValue(b)
+			if konto.addValue(b):
+				val += b
+			else:
+				logger.error('Adding bill value %.2f to donations account failed!', c)
+				showConnectionFailure()
+				lcd.cursor_pos = (3, 0)
+				lcd.write_string('Bitte melden!')
+				time.sleep(5)
+				break
 		time.sleep(.1)
 	bills.disableAcceptance()
 	coin.inhibit()
@@ -402,7 +397,7 @@ def showTransactionDetails(t : Transaction):
 	while keypad.poll() != 'E' and timeout > time.time():
 		time.sleep(.1)
 
-def historyKonto(konto : MakerSpaceAPI):
+def historyAccount(konto : MakerSpaceAPI):
 	logger.debug('Showing transaction list')
 	offset = 0
 	cursor = 0
@@ -629,17 +624,16 @@ def withdrawAccount(konto : MakerSpaceAPI):
 			while door.isOpen():
 				time.sleep(.5)
 
-def subMenu(konto):
-	logger.debug('Submenu for %s', konto.getSource())
+def subMenu(konto : MakerSpaceAPI):
+	logger.debug('Submenu for %s', konto.getTarget())
 	timeout = time.time() + 30
 	while timeout > time.time():
 		lcd.clear()
 		lcd.write_string('5 Einzahlung')
 		lcd.cursor_pos = (1, 0)
 		lcd.write_string('6 Transaktionen')
-		if isinstance(konto, NFCKasse):
-			lcd.cursor_pos = (2, 0)
-			lcd.write_string('7 \x01berweisung')
+		lcd.cursor_pos = (2, 0)
+		lcd.write_string('7 \x01berweisung')
 		if konto.isAdmin():
 			lcd.cursor_pos = (3, 0)
 			lcd.write_string('8 Abschöpfung')
@@ -647,13 +641,13 @@ def subMenu(konto):
 		while True:
 			key = keypad.poll()
 			if key == '5':
-				chargeKonto(konto)
+				topupAccount(konto)
 				return
 			elif key == '6':
-				historyKonto(konto)
+				historyAccount(konto)
 				timeout = time.time() + 30
 				break
-			elif key == '7' and isinstance(konto, NFCKasse):
+			elif key == '7':
 				transferAccount(konto)
 				return
 			elif key == '8' and konto.isAdmin():
@@ -672,16 +666,17 @@ def mainMenu(tag):
 		time.sleep(3)
 		return
 	
-	kasse = MakerSpaceAPI(user_config.ACCOUNT_TARGET, tag)
+	kasse = MakerSpaceAPI(settings.ACCOUNT_TARGET, tag)
 	cardvalue = kasse.getCardValue()
-	if user_config.GUEST_UID is not None and tag == user_config.GUEST_UID:
-		chargeKonto(kasse)
+	if settings.GUEST_UID is not None and tag == settings.GUEST_UID:
+		topupAccount(kasse)
 		return
 	timeout = time.time() + 30
 	while timeout > time.time():
 		timeout = time.time() + 30
 		lcd.clear()
 		lcd.cursor_pos = (0, 0)
+		admin = kasse.isAdmin()
 		if kasse is None:
 			#                12345678901234567890
 			lcd.write_string('x Getränkekasse N/A')
@@ -691,12 +686,10 @@ def mainMenu(tag):
 		else:
 			lcd.write_string('1 Kein Getränkekonto')
 		
-		lcd.cursor_pos = (2, 0)
-		if kasse.isAdmin():
+		if admin:
+			lcd.cursor_pos = (2, 0)
 			lcd.write_string('3 Spenden entnehmen')
-		
-		lcd.cursor_pos = (3, 0)
-		if kasse.isAdmin():
+			lcd.cursor_pos = (3, 0)
 			lcd.write_string('4 Kartenkäufe entn.')
 		while True:
 			key = keypad.poll()
@@ -715,13 +708,13 @@ def mainMenu(tag):
 					if key == '1':
 						subMenu(kasse)
 					return
-			elif key == '3' and konto.isAdmin():
-				kasse.changeTarget(user_config.DONATION_TARGET)
+			elif key == '3' and admin:
+				kasse.changeTarget(settings.DONATION_TARGET)
 				withdrawAccount(kasse)
 				return
-			elif key == '4' and konto.isAdmin():
-				kasse.changeTarget(user_config.CARDS_TARGET)
-				withdrawAccount(cards)
+			elif key == '4' and admin:
+				kasse.changeTarget(settings.CARDS_TARGET)
+				withdrawAccount(kasse)
 				return
 			elif key == 'E' or time.time() > timeout:
 				return
