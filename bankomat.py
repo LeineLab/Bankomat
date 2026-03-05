@@ -392,7 +392,7 @@ def showTransactionDetails(t : Transaction):
 	lcd.cursor_pos = (1, 0)
 	lcd.write_string("%40s" % t.getDesc()[:40])
 	lcd.cursor_pos = (3, 0)
-	lcd.write_string("%18.2f \x03" % t.getValue())
+	lcd.write_string("%18.2f \x03" % t.getCardValue())
 	timeout = time.time() + 30
 	while keypad.poll() != 'E' and timeout > time.time():
 		time.sleep(.1)
@@ -490,7 +490,7 @@ def enterAmount(maxVal : float):
 		oldKey = key
 
 def transferAccount(konto : MakerSpaceAPI):
-	amount = enterAmount(konto.getValue())
+	amount = enterAmount(konto.getCardValue())
 	if amount is None:
 		return False
 	else:
