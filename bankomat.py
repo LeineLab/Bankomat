@@ -206,7 +206,7 @@ def buyCard():
 	time.sleep(5)
 
 def topupAccount(konto : MakerSpaceAPI):
-	logger.debug('Starting account charging for %s', konto.getSource())
+	logger.debug('Starting account charging for %s', konto.getTarget())
 	inserted = 0
 	oldVal = None
 	lastInserted = 0
