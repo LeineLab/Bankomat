@@ -17,7 +17,7 @@ class CoinPulse:
 		ret = None
 		lp = self._last_pulse
 		p = self._pulses
-		if lp and lp + .25 < time.time():
+		if lp and lp + .5 < time.time():
 			if p in self._value_for_pulses:
 				ret = self._value_for_pulses[self._pulses]
 			else:
