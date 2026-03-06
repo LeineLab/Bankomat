@@ -230,7 +230,7 @@ class MakerSpaceAPI:
             logger.info('Transfer to same account stopped')
             return 1
 
-        src_val = self.getValue()
+        src_val = self.getCardValue()
         if src_val is None or value > src_val:
             return -1
 
