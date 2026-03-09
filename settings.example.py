@@ -21,5 +21,8 @@ SMTP_HOST        = ''
 SMTP_SENDER      = ''
 SMTP_RECEIVER    = ''
 
+# Timezone for displaying transaction timestamps (IANA timezone name)
+DISPLAY_TIMEZONE = 'Europe/Berlin'
+
 # Test UID for manual testing (list of bytes, e.g. [0x04, 0xAB, 0xCD, 0xEF])
 UID_TEST = [0, 0, 0, 0]

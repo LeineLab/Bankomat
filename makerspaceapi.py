@@ -1,22 +1,37 @@
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import logging
+import settings
 
 logger = logging.getLogger(__name__)
+
+def _display_tz():
+    tz_name = getattr(settings, 'DISPLAY_TIMEZONE', 'Europe/Berlin')
+    try:
+        return ZoneInfo(tz_name)
+    except ZoneInfoNotFoundError:
+        logger.warning('Unknown DISPLAY_TIMEZONE %r, falling back to Europe/Berlin', tz_name)
+        return ZoneInfo('Europe/Berlin')
 
 class Transaction:
     def __init__(self, desc, value, date):
         self.desc = desc
         self.value = value
+        tz = _display_tz()
         # date may be a UNIX timestamp (int/float) or ISO string
         if isinstance(date, (int, float)):
-            self.date = datetime.fromtimestamp(date)
+            self.date = datetime.fromtimestamp(date, tz=timezone.utc).astimezone(tz)
         else:
             try:
-                self.date = datetime.fromisoformat(str(date))
+                dt = datetime.fromisoformat(str(date))
+                if dt.tzinfo is None:
+                    # treat naive datetimes from API as UTC
+                    dt = dt.replace(tzinfo=timezone.utc)
+                self.date = dt.astimezone(tz)
             except Exception:
-                self.date = datetime.fromtimestamp(0)
+                self.date = datetime.fromtimestamp(0, tz=timezone.utc).astimezone(tz)
 
     def getDate(self):
         return self.date
