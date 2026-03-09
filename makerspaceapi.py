@@ -74,7 +74,7 @@ class MakerSpaceAPI:
         except requests.RequestException:
             return False
 
-   def __init__(self, target, uid = 0):
+    def __init__(self, target, uid = 0):
         self._target = target
         self._uid = 0
         if isinstance(uid, (list, bytes, bytearray)):
