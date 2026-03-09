@@ -73,8 +73,8 @@ class MakerSpaceAPI:
             return r.ok
         except requests.RequestException:
             return False
-    
-    def __init__(self, target, uid = 0):
+
+   def __init__(self, target, uid = 0):
         self._target = target
         self._uid = 0
         if isinstance(uid, (list, bytes, bytearray)):
@@ -84,10 +84,10 @@ class MakerSpaceAPI:
         else:
             self._uid = uid
         self._pin = None
-    
+
     def changeTarget(self, target):
         self._target = target
-    
+
     def getTarget(self):
         return self._target
 
@@ -121,7 +121,7 @@ class MakerSpaceAPI:
         except requests.RequestException:
             logger.exception('checkPin failed')
             return False
-    
+
     def getAdminName(self):
         if not self._uid:
             return None
@@ -159,7 +159,7 @@ class MakerSpaceAPI:
         except requests.RequestException:
             logger.exception('withdrawValue failed')
             return False
-    
+
     def getTotal(self):
         try:
             r = requests.get(
@@ -175,7 +175,7 @@ class MakerSpaceAPI:
         except requests.RequestException:
             logger.exception('getTotal failed')
         return 0
-    
+
     def addValue(self, value : float) -> bool:
         '''Record cash into a target (no user balance change — e.g. donations, card sales).'''
         if value is None or value <= 0:
@@ -245,7 +245,7 @@ class MakerSpaceAPI:
             logger.info('Transfer to same account stopped')
             return 1
 
-        src_val = self.getValue()
+        src_val = self.getCardValue()
         if src_val is None or value > src_val:
             return -1
 

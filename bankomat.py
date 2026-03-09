@@ -206,7 +206,7 @@ def buyCard():
 	time.sleep(5)
 
 def topupAccount(konto : MakerSpaceAPI):
-	logger.debug('Starting account charging for %s', konto.getSource())
+	logger.debug('Starting account charging for %s', konto.getTarget())
 	inserted = 0
 	oldVal = None
 	lastInserted = 0
@@ -388,7 +388,7 @@ def donate():
 def showTransactionDetails(t : Transaction):
 	logger.debug('Showing transaction details')
 	lcd.clear()
-	lcd.write_string("%s" % t.getDate().strftime('%d.%m.%y %H:%M'))
+	lcd.write_string("%s UTC" % t.getDate().strftime('%d.%m.%y %H:%M'))
 	lcd.cursor_pos = (1, 0)
 	lcd.write_string("%40s" % t.getDesc()[:40])
 	lcd.cursor_pos = (3, 0)
@@ -490,7 +490,7 @@ def enterAmount(maxVal : float):
 		oldKey = key
 
 def transferAccount(konto : MakerSpaceAPI):
-	amount = enterAmount(konto.getValue())
+	amount = enterAmount(konto.getCardValue())
 	if amount is None:
 		return False
 	else:
