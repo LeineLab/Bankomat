@@ -188,7 +188,7 @@ def buyCard():
 			coin.inhibit()
 		c, p = coin.poll()
 		if c is not None:
-			account.addValue(c, p)
+			account.addValue(c)
 			if c >= 0.5:
 				logger.info('Inserted %.2f, dispensing card', c)
 				cardDispenser.dispense()
