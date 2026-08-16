@@ -87,6 +87,16 @@ def showConnectionFailure():
     lcd.write_string("Vorgang abgebrochen")
 
 
+def alertAdmin(subject, text):
+    """Notify admins of money accepted but not booked, for manual reconciliation."""
+    try:
+        from email_sender import emailSender
+
+        emailSender().report(subject, text)
+    except Exception:
+        logger.exception("Failed to send admin alert email")
+
+
 def wait_for_tag():
     logger.debug("Starting NFC read loop")
     donationButton.light(1)
@@ -199,7 +209,13 @@ def buyCard():
             coin.inhibit()
         c, p = coin.poll()
         if c is not None:
-            account.addValue(c)
+            if not account.addValue(c):
+                logger.error("Failed to book card sale value %.2f", c)
+                alertAdmin(
+                    f"Bankomat Buchungsfehler {account.getTarget()}",
+                    "Kartenverkauf %.2f Euro konnte nicht verbucht werden "
+                    "(Kontostand nachprüfen). Karte wurde trotzdem ausgegeben." % c,
+                )
             if c >= 0.5:
                 logger.info("Inserted %.2f, dispensing card", c)
                 cardDispenser.dispense()
@@ -302,7 +318,15 @@ def topupAccount(konto: MakerSpaceAPI):
     if c is not None:
         if c > 0:
             logger.info("Inserted coin value %.2f after closing", c)
-            konto.addCardValue(c)
+            if konto.addCardValue(c) is None:
+                logger.error(
+                    "Failed to book trailing coin value %.2f after closing", c
+                )
+                alertAdmin(
+                    f"Bankomat Buchungsfehler {konto.getTarget()}",
+                    "Münzeinwurf %.2f Euro konnte nach Verbindungsabbruch nicht "
+                    "verbucht werden (Kontostand nachprüfen)." % c,
+                )
         else:
             logger.error("Inserted unknown coin with %d pulses after closing", p)
             konto.addCardValue(0)
@@ -400,8 +424,17 @@ def donate():
     if c is not None:
         if c > 0:
             logger.info("Inserted coin value %.2f after closing", c)
-            val += c
-            konto.addValue(c)
+            if konto.addValue(c):
+                val += c
+            else:
+                logger.error(
+                    "Failed to book trailing coin value %.2f after closing", c
+                )
+                alertAdmin(
+                    f"Bankomat Buchungsfehler {konto.getTarget()}",
+                    "Spende %.2f Euro konnte nach Verbindungsabbruch nicht "
+                    "verbucht werden (Kontostand nachprüfen)." % c,
+                )
         else:
             logger.error("Inserted unknown coin with %d pulses after closing", p)
             # konto.addValue(0)
