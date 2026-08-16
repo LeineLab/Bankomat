@@ -250,7 +250,7 @@ def topupAccount(konto: MakerSpaceAPI):
     while timeout > time.time():
         if oldVal != val or lastInserted != inserted:
             lcd.cursor_pos = (0, 0)
-            lcd.write_string("   Getränkekonto:   ")
+            lcd.write_string("        Konto:      ")
             lcd.cursor_pos = (1, 0)
             lcd.write_string("Guthaben:% 9.2f \x03" % val)
             lcd.cursor_pos = (2, 0)
@@ -760,10 +760,10 @@ def mainMenu(tag):
             #                12345678901234567890
             lcd.write_string("x Getränkekasse N/A")
         elif cardvalue is not None:
-            print("Getränkekonto gefunden %.2f" % cardvalue)
-            lcd.write_string("1 Getränkekonto")
+            print("Konto gefunden %.2f" % cardvalue)
+            lcd.write_string("1 Konto")
         else:
-            lcd.write_string("1 Kein Getränkekonto")
+            lcd.write_string("1 Kein Konto")
 
         if admin:
             lcd.cursor_pos = (2, 0)
