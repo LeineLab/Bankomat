@@ -21,34 +21,36 @@ logging.basicConfig()
 logging.getLogger().setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
-lcd = i2c.CharLCD('PCF8574', 0x27, port=1, charmap='A00', cols=20, rows=4)
-lcd.create_char(1, [0x11,0x00,0x11,0x11,0x11,0x11,0x0E,0x00]) #Ü
-lcd.create_char(2, [0x06,0x09,0x09,0x0E,0x09,0x09,0x16,0x00]) #ß
-lcd.create_char(3, [0x07,0x08,0x1E,0x08,0x1E,0x08,0x07,0x00]) #€
+lcd = i2c.CharLCD("PCF8574", 0x27, port=1, charmap="A00", cols=20, rows=4)
+lcd.create_char(1, [0x11, 0x00, 0x11, 0x11, 0x11, 0x11, 0x0E, 0x00])  # Ü
+lcd.create_char(2, [0x06, 0x09, 0x09, 0x0E, 0x09, 0x09, 0x16, 0x00])  # ß
+lcd.create_char(3, [0x07, 0x08, 0x1E, 0x08, 0x1E, 0x08, 0x07, 0x00])  # €
 
 lcd.clear()
-lcd.write_string('Booting...')
+lcd.write_string("Booting...")
 
-coin = CoinPulse(17, 22, {2:0.5, 3:1, 4:2})
-cols = [26, 19, 13,  6]
+coin = CoinPulse(
+    17, 22, {2: 0.5, 3: 1, 4: 2}, log_path=getattr(settings, "COIN_LOG", None)
+)
+cols = [26, 19, 13, 6]
 rows = [21, 20, 16, 12]
 buttons = [
-	['1', '2', '3', 'E'],
-	['4', '5', '6', 'C'],
-	['7', '8', '9', 'L'],
-	['U', '0', 'D', 'O']
+    ["1", "2", "3", "E"],
+    ["4", "5", "6", "C"],
+    ["7", "8", "9", "L"],
+    ["U", "0", "D", "O"],
 ]
 keypad = Keypad(cols, rows, buttons)
 
 bills = BillAcceptor(settings.NV9_10_USBPORT)
 lcd.cursor_pos = (1, 0)
-lcd.write_string('Notes init')
-logger.debug('Initializing bill acceptor')
+lcd.write_string("Notes init")
+logger.debug("Initializing bill acceptor")
 if not bills.connect():
-	logger.error('Starting bill acceptor failed')
-	lcd.write_string('    [fail]')
+    logger.error("Starting bill acceptor failed")
+    lcd.write_string("    [fail]")
 else:
-	lcd.write_string('      [OK]')
+    lcd.write_string("      [OK]")
 door = Door(23, 18)
 cardDispenser = CardDispenser(4, 5)
 
@@ -57,527 +59,600 @@ guestButton = GPIOButton(9, 8)
 buyButton = GPIOButton(10, 25)
 
 lcd.cursor_pos = (2, 0)
-lcd.write_string('NFC Init')
+lcd.write_string("NFC Init")
 
 try:
-	logger.debug('Initializing NFC reader')
-	pni2c = Pn532I2c(1)
-	nfc = Pn532(pni2c)
+    logger.debug("Initializing NFC reader")
+    pni2c = Pn532I2c(1)
+    nfc = Pn532(pni2c)
 
-	nfc.begin()
-	nfc.setPassiveActivationRetries(0xFF)
-	nfc.SAMConfig()
-	lcd.write_string('        [OK]')
-	logger.debug('NFC init succeeded')
+    nfc.begin()
+    nfc.setPassiveActivationRetries(0xFF)
+    nfc.SAMConfig()
+    lcd.write_string("        [OK]")
+    logger.debug("NFC init succeeded")
 except Exception:
-	lcd.write_string('      [fail]')
-	logger.exception('NFC init failed')
-	exit(1)
+    lcd.write_string("      [fail]")
+    logger.exception("NFC init failed")
+    exit(1)
+
 
 def showConnectionFailure():
-	lcd.clear()
-	#                 12345678901234567890
-	lcd.write_string('Verbindung zur')
-	lcd.cursor_pos = (1, 0)
-	lcd.write_string('API verloren.')
-	lcd.cursor_pos = (2, 0)
-	lcd.write_string('Vorgang abgebrochen')
+    lcd.clear()
+    #                 12345678901234567890
+    lcd.write_string("Verbindung zur")
+    lcd.cursor_pos = (1, 0)
+    lcd.write_string("API verloren.")
+    lcd.cursor_pos = (2, 0)
+    lcd.write_string("Vorgang abgebrochen")
+
+
+def alertAdmin(subject, text):
+    """Notify admins of money accepted but not booked, for manual reconciliation."""
+    try:
+        from email_sender import emailSender
+
+        emailSender().report(subject, text)
+    except Exception:
+        logger.exception("Failed to send admin alert email")
+
 
 def wait_for_tag():
-	logger.debug('Starting NFC read loop')
-	donationButton.light(1)
-	buyButton.light(cardDispenser.check())
-	guestButton.light(1)
-	donationButton.reset()
-	buyButton.reset()
-	guestButton.reset()
-	lcd.backlight_enabled = False
-	lcd.clear()
-	lcd.cursor_pos = (0, 0)
-	#                 12345678901234567890
-	lcd.write_string(' Karte an NFC-Leser ')
-	lcd.cursor_pos = (1, 0)
-	lcd.write_string(' halten, alternativ ')
-	lcd.cursor_pos = (2, 0)
-	if settings.GUEST_UID is not None:
-		lcd.write_string(' Spenden, Gast oder ')
-		lcd.cursor_pos = (3, 0)
-		lcd.write_string('Karte kaufen drücken')
-	else:
-		lcd.write_string(' Spenden oder Karte ')
-		lcd.cursor_pos = (3, 0)
-		lcd.write_string('   kaufen drücken')
-	while True:
-		try:
-			success, uid = nfc.readPassiveTargetID(pn532.PN532_MIFARE_ISO14443A_106KBPS)
-			if not success:
-				uid = None
-		except:
-			logger.exception('NFC read failed')
-			uid = None
-		light = int(time.time()) % 3
-		donationButton.light(light == 0)
-		buyButton.light(light == 1 and cardDispenser.check())
-		guestButton.light(light == 2)
-		if settings.GUEST_UID is not None and uid is None and guestButton.check():
-			logger.debug('Guest button pressed')
-			uid = settings.GUEST_UID
-		if uid is not None:
-			logger.debug('Got UID %s', uid.hex())
-			donationButton.light(0)
-			guestButton.light(uid == settings.GUEST_UID)
-			buyButton.light(0)
-			return uid
-		elif donationButton.check():
-			logger.debug('Donation button pressed')
-			buyButton.light(0)
-			guestButton.light(0)
-			donate()
-			return
-		elif keypad.poll() == 'L' or buyButton.check():
-			logger.debug('Buy button pressed')
-			guestButton.light(0)
-			donationButton.light(0)
-			buyCard()
-			return
+    logger.debug("Starting NFC read loop")
+    donationButton.light(1)
+    buyButton.light(cardDispenser.check())
+    guestButton.light(1)
+    donationButton.reset()
+    buyButton.reset()
+    guestButton.reset()
+    lcd.backlight_enabled = False
+    lcd.clear()
+    lcd.cursor_pos = (0, 0)
+    #                 12345678901234567890
+    lcd.write_string(" Karte an NFC-Leser ")
+    lcd.cursor_pos = (1, 0)
+    lcd.write_string(" halten, alternativ ")
+    lcd.cursor_pos = (2, 0)
+    if settings.GUEST_UID is not None:
+        lcd.write_string(" Spenden, Gast oder ")
+        lcd.cursor_pos = (3, 0)
+        lcd.write_string("Karte kaufen drücken")
+    else:
+        lcd.write_string(" Spenden oder Karte ")
+        lcd.cursor_pos = (3, 0)
+        lcd.write_string("   kaufen drücken")
+    while True:
+        try:
+            success, uid = nfc.readPassiveTargetID(pn532.PN532_MIFARE_ISO14443A_106KBPS)
+            if not success:
+                uid = None
+        except:
+            logger.exception("NFC read failed")
+            uid = None
+        light = int(time.time()) % 3
+        donationButton.light(light == 0)
+        buyButton.light(light == 1 and cardDispenser.check())
+        guestButton.light(light == 2)
+        if settings.GUEST_UID is not None and uid is None and guestButton.check():
+            logger.debug("Guest button pressed")
+            uid = settings.GUEST_UID
+        if uid is not None:
+            logger.debug("Got UID %s", uid.hex())
+            donationButton.light(0)
+            guestButton.light(uid == settings.GUEST_UID)
+            buyButton.light(0)
+            return uid
+        elif donationButton.check():
+            logger.debug("Donation button pressed")
+            buyButton.light(0)
+            guestButton.light(0)
+            donate()
+            return
+        elif keypad.poll() == "L" or buyButton.check():
+            logger.debug("Buy button pressed")
+            guestButton.light(0)
+            donationButton.light(0)
+            buyCard()
+            return
+
 
 def waitForTransferTag():
-	logger.debug('Starting NFC read loop for transfer')
-	lcd.clear()
-	lcd.cursor_pos = (1, 0)
-	#                 12345678901234567890
-	lcd.write_string('Karte zum \x01berweisen')
-	lcd.cursor_pos = (2, 0)
-	lcd.write_string('     anhalten...    ')
-	timeout = time.time() + 30
-	while keypad.poll() != 'E' and timeout > time.time():
-		try:
-			success, uid = nfc.readPassiveTargetID(pn532.PN532_MIFARE_ISO14443A_106KBPS)
-			if not success:
-				uid = None
-		except:
-			logger.exception('NFC read failed')
-			uid = None
-		if uid is not None:
-			return uid
-	return None
+    logger.debug("Starting NFC read loop for transfer")
+    lcd.clear()
+    lcd.cursor_pos = (1, 0)
+    #                 12345678901234567890
+    lcd.write_string("Karte zum \x01berweisen")
+    lcd.cursor_pos = (2, 0)
+    lcd.write_string("     anhalten...    ")
+    timeout = time.time() + 30
+    while keypad.poll() != "E" and timeout > time.time():
+        try:
+            success, uid = nfc.readPassiveTargetID(pn532.PN532_MIFARE_ISO14443A_106KBPS)
+            if not success:
+                uid = None
+        except:
+            logger.exception("NFC read failed")
+            uid = None
+        if uid is not None:
+            return uid
+    return None
+
 
 def buyCard():
-	logger.debug('Starting buying card loop')
-	buyButton.light(1)
-	lcd.backlight_enabled = True
-	if not cardDispenser.check():
-		logger.error('No more cards available in stacker')
-		lcd.clear()
-		#                 12345678901234567890
-		lcd.cursor_pos = (1, 0)
-		lcd.write_string('Derzeit keine Karten')
-		lcd.cursor_pos = (2, 0)
-		lcd.write_string('     verfügbar.')
-		time.sleep(5)
-		return
-	account = MakerSpaceAPI(settings.CARDS_TARGET)
-	lcd.clear()
-	lcd.write_string('Neue Karte: 50ct')
-	lcd.cursor_pos = (1, 0)
-	lcd.write_string('Kein Wechselgeld!')
-	timeout = time.time() + 30
-	coin.enable()
-	while timeout > time.time() and keypad.poll() != 'E':
-		if time.time() > timeout - 2:
-			coin.inhibit()
-		c, p = coin.poll()
-		if c is not None:
-			account.addValue(c)
-			if c >= 0.5:
-				logger.info('Inserted %.2f, dispensing card', c)
-				cardDispenser.dispense()
-				lcd.clear()
-				lcd.cursor_pos = (2, 0)
-				lcd.write_string('Danke!')
-				time.sleep(5)
-				return
-		time.sleep(.1)
-	coin.inhibit()
-	lcd.clear()
-	lcd.cursor_pos = (2, 0)
-	lcd.write_string('Abgebrochen')
-	logger.debug('Buying card stopped due to user cancellation or timeout')
-	time.sleep(5)
+    logger.debug("Starting buying card loop")
+    buyButton.light(1)
+    lcd.backlight_enabled = True
+    if not cardDispenser.check():
+        logger.error("No more cards available in stacker")
+        lcd.clear()
+        #                 12345678901234567890
+        lcd.cursor_pos = (1, 0)
+        lcd.write_string("Derzeit keine Karten")
+        lcd.cursor_pos = (2, 0)
+        lcd.write_string("     verfügbar.")
+        time.sleep(5)
+        return
+    if not MakerSpaceAPI.ping():
+        logger.error("Lost connection to database")
+        showConnectionFailure()
+        time.sleep(5)
+        return
+    account = MakerSpaceAPI(settings.CARDS_TARGET)
+    lcd.clear()
+    lcd.write_string("Neue Karte: 50ct")
+    lcd.cursor_pos = (1, 0)
+    lcd.write_string("Kein Wechselgeld!")
+    timeout = time.time() + 30
+    coin.enable()
+    while timeout > time.time() and keypad.poll() != "E":
+        if time.time() > timeout - 2:
+            coin.inhibit()
+        c, p = coin.poll()
+        if c is not None:
+            if not account.addValue(c):
+                logger.error("Failed to book card sale value %.2f", c)
+                alertAdmin(
+                    f"Bankomat Buchungsfehler {account.getTarget()}",
+                    "Kartenverkauf %.2f Euro konnte nicht verbucht werden "
+                    "(Kontostand nachprüfen). Karte wurde trotzdem ausgegeben." % c,
+                )
+            if c >= 0.5:
+                logger.info("Inserted %.2f, dispensing card", c)
+                cardDispenser.dispense()
+                lcd.clear()
+                lcd.cursor_pos = (2, 0)
+                lcd.write_string("Danke!")
+                time.sleep(5)
+                return
+        time.sleep(0.1)
+    coin.inhibit()
+    lcd.clear()
+    lcd.cursor_pos = (2, 0)
+    lcd.write_string("Abgebrochen")
+    logger.debug("Buying card stopped due to user cancellation or timeout")
+    time.sleep(5)
 
-def topupAccount(konto : MakerSpaceAPI):
-	logger.debug('Starting account charging for %s', konto.getTarget())
-	inserted = 0
-	oldVal = None
-	lastInserted = 0
-	val = konto.getCardValue()
-	coin.enable()
-	bills.enableAcceptance()
-	timeout = time.time() + 30
-	while timeout > time.time():
-		if oldVal != val or lastInserted != inserted:
-			lcd.cursor_pos = (0, 0)
-			lcd.write_string('        Konto:      ')
-			lcd.cursor_pos = (1, 0)
-			lcd.write_string('Guthaben:% 9.2f \x03' % val)
-			lcd.cursor_pos = (2, 0)
-			lcd.write_string('Zuletzt: % 9.2f \x03' % inserted)
-			lcd.cursor_pos = (3, 0)
-			lcd.write_string('Mit OK beenden ')
-			oldVal = val
-			lastInserted = inserted
-		key = keypad.poll()
-		if key == 'O' or (lastInserted == 0 and key == 'E'):
-			break
-		if not MakerSpaceAPI.ping():
-			logger.error('Lost connection to database')
-			showConnectionFailure()
-			time.sleep(5)
-			break
-		c, p = coin.poll()
-		if c is not None:
-			timeout = time.time() + 30
-			if c > 0:
-				logger.info('Inserted coin value %.2f', c)
-				inserted = c
-				ret = konto.addCardValue(c)
-				if ret is None:
-					showConnectionFailure()
-					lcd.cursor_pos = (3, 0)
-					lcd.write_string('Bitte melden!')
-					time.sleep(5)
-					break
-				val = ret
-			else:
-				logger.error('Inserted unknown coin with %d pulses', p)
-				#konto.addCardValue(0)
-			coin.enable()
-		bills.parse()
-		if bills.getEscrow():
-			logger.info('Inserted bill value %d, accepting', bills.getEscrow())
-			timeout = time.time() + 30
-			bills.acceptEscrow()
-		b = bills.getAndClearAcceptedValue()
-		if b:
-			logger.info('Stored bill value %d', b)
-			timeout = time.time() + 30
-			inserted = b
-			logger.info('Adding value to account')
-			ret = konto.addCardValue(b)
-			if ret is None:
-				showConnectionFailure()
-				lcd.cursor_pos = (3, 0)
-				lcd.write_string('Bitte melden!')
-				time.sleep(5)
-				break
-			val = ret
-		time.sleep(.1)
-	bills.disableAcceptance()
-	coin.inhibit()
-	time.sleep(1)
-	c, p = coin.poll() # If not disabled fast enough
-	if c is not None:
-		if c > 0:
-			logger.info('Inserted coin value %.2f after closing', c)
-			konto.addCardValue(c)
-		else:
-			logger.error('Inserted unknown coin with %d pulses after closing', p)
-			konto.addCardValue(0)
+
+def topupAccount(konto: MakerSpaceAPI):
+    logger.debug("Starting account charging for %s", konto.getTarget())
+    if not MakerSpaceAPI.ping():
+        logger.error("Lost connection to database")
+        showConnectionFailure()
+        time.sleep(5)
+        return
+    inserted = 0
+    oldVal = None
+    lastInserted = 0
+    val = konto.getCardValue()
+    coin.enable()
+    bills.enableAcceptance()
+    timeout = time.time() + 30
+    while timeout > time.time():
+        if oldVal != val or lastInserted != inserted:
+            lcd.cursor_pos = (0, 0)
+            lcd.write_string("        Konto:      ")
+            lcd.cursor_pos = (1, 0)
+            lcd.write_string("Guthaben:% 9.2f \x03" % val)
+            lcd.cursor_pos = (2, 0)
+            lcd.write_string("Zuletzt: % 9.2f \x03" % inserted)
+            lcd.cursor_pos = (3, 0)
+            lcd.write_string("Mit OK beenden ")
+            oldVal = val
+            lastInserted = inserted
+        key = keypad.poll()
+        if key == "O" or (lastInserted == 0 and key == "E"):
+            break
+        if not MakerSpaceAPI.ping():
+            logger.error("Lost connection to database")
+            bills.disableAcceptance()
+            coin.inhibit()
+            showConnectionFailure()
+            time.sleep(5)
+            break
+        c, p = coin.poll()
+        if c is not None:
+            timeout = time.time() + 30
+            if c > 0:
+                logger.info("Inserted coin value %.2f", c)
+                inserted = c
+                ret = konto.addCardValue(c)
+                if ret is None:
+                    bills.disableAcceptance()
+                    coin.inhibit()
+                    showConnectionFailure()
+                    lcd.cursor_pos = (3, 0)
+                    lcd.write_string("Bitte melden!")
+                    time.sleep(5)
+                    break
+                val = ret
+            else:
+                logger.error("Inserted unknown coin with %d pulses", p)
+                # konto.addCardValue(0)
+            coin.enable()
+        bills.parse()
+        if bills.getEscrow():
+            logger.info("Inserted bill value %d, accepting", bills.getEscrow())
+            timeout = time.time() + 30
+            bills.acceptEscrow()
+        b = bills.getAndClearAcceptedValue()
+        if b:
+            logger.info("Stored bill value %d", b)
+            timeout = time.time() + 30
+            inserted = b
+            logger.info("Adding value to account")
+            ret = konto.addCardValue(b)
+            if ret is None:
+                bills.disableAcceptance()
+                coin.inhibit()
+                showConnectionFailure()
+                lcd.cursor_pos = (3, 0)
+                lcd.write_string("Bitte melden!")
+                time.sleep(5)
+                break
+            val = ret
+        time.sleep(0.1)
+    bills.disableAcceptance()
+    coin.inhibit()
+    time.sleep(1)
+    c, p = coin.poll()  # If not disabled fast enough
+    if c is not None:
+        if c > 0:
+            logger.info("Inserted coin value %.2f after closing", c)
+            if konto.addCardValue(c) is None:
+                logger.error(
+                    "Failed to book trailing coin value %.2f after closing", c
+                )
+                alertAdmin(
+                    f"Bankomat Buchungsfehler {konto.getTarget()}",
+                    "Münzeinwurf %.2f Euro konnte nach Verbindungsabbruch nicht "
+                    "verbucht werden (Kontostand nachprüfen)." % c,
+                )
+        else:
+            logger.error("Inserted unknown coin with %d pulses after closing", p)
+            konto.addCardValue(0)
+
 
 def donate():
-	logger.debug('Starting donation')
-	inserted = 0
-	oldVal = None
-	lastInserted = 0
-	konto = MakerSpaceAPI(settings.DONATION_TARGET)
-	coin.enable()
-	bills.enableAcceptance()
-	val = 0
-	lcd.backlight_enabled = True
-	timeout = time.time() + 30
-	while timeout > time.time():
-		if oldVal != val or lastInserted != inserted:
-			lcd.cursor_pos = (0, 0)
-			#                 12345678901234567890
-			lcd.write_string('Spende:             ')
-			lcd.cursor_pos = (1, 0)
-			lcd.write_string('Bisher:  % 9.2f \x03' % val)
-			lcd.cursor_pos = (2, 0)
-			lcd.write_string('Zuletzt: % 9.2f \x03' % inserted)
-			lcd.cursor_pos = (3, 0)
-			lcd.write_string('Mit OK beenden      ')
-			oldVal = val
-			lastInserted = inserted
-		key = keypad.poll()
-		if key == 'O' or (lastInserted == 0 and key == 'E'):
-			break
-		if not MakerSpaceAPI.ping():
-			logger.error('Lost connection to database')
-			showConnectionFailure()
-			time.sleep(5)
-			break
-		c, p = coin.poll()
-		if c is not None:
-			timeout = time.time() + 30
-			if c > 0:
-				logger.info('Inserted coin value %.2f', c)
-				inserted = c
-				if konto.addValue(c):
-					val += c
-				else:
-					logger.error('Adding coin value %.2f to donations account failed!', c)
-					showConnectionFailure()
-					lcd.cursor_pos = (3, 0)
-					lcd.write_string('Bitte melden!')
-					time.sleep(5)
-					break
-			else:
-				logger.error('Inserted unknown coin with %d pulses.', p)
-				#konto.addValue(0)
-				pass #unknown coin?
-			coin.enable()
-		bills.parse()
-		if bills.getEscrow():
-			logger.info('Inserted bill value %d, accepting', bills.getEscrow())
-			timeout = time.time() + 30
-			bills.acceptEscrow()
-		b = bills.getAndClearAcceptedValue()
-		if b:
-			logger.info('Stored bill value %d', b)
-			timeout = time.time() + 30
-			inserted = b
-			if konto.addValue(b):
-				val += b
-			else:
-				logger.error('Adding bill value %.2f to donations account failed!', c)
-				showConnectionFailure()
-				lcd.cursor_pos = (3, 0)
-				lcd.write_string('Bitte melden!')
-				time.sleep(5)
-				break
-		time.sleep(.1)
-	bills.disableAcceptance()
-	coin.inhibit()
-	time.sleep(1)
-	c, p = coin.poll() # If not fast enough disabled
-	if c is not None:
-		if c > 0:
-			logger.info('Inserted coin value %.2f after closing', c)
-			val += c
-			konto.addValue(c)
-		else:
-			logger.error('Inserted unknown coin with %d pulses after closing', p)
-			#konto.addValue(0)
-	lcd.clear()
-	lcd.cursor_pos = (2, 0)
-	if val == 0:
-		#                 12345678901234567890
-		lcd.write_string("      Schade...")
-	elif val >= 20:
-		#                 12345678901234567890
-		lcd.write_string("  Sehr gro\x02zügig!")
-	elif val >= 5:
-		#                 12345678901234567890
-		lcd.write_string("    Vielen Dank!")
-	else:
-		#                 12345678901234567890
-		lcd.write_string("       Danke!")
-	time.sleep(3)
+    logger.debug("Starting donation")
+    if not MakerSpaceAPI.ping():
+        logger.error("Lost connection to database")
+        showConnectionFailure()
+        time.sleep(5)
+        return
+    inserted = 0
+    oldVal = None
+    lastInserted = 0
+    konto = MakerSpaceAPI(settings.DONATION_TARGET)
+    coin.enable()
+    bills.enableAcceptance()
+    val = 0
+    lcd.backlight_enabled = True
+    timeout = time.time() + 30
+    while timeout > time.time():
+        if oldVal != val or lastInserted != inserted:
+            lcd.cursor_pos = (0, 0)
+            #                 12345678901234567890
+            lcd.write_string("Spende:             ")
+            lcd.cursor_pos = (1, 0)
+            lcd.write_string("Bisher:  % 9.2f \x03" % val)
+            lcd.cursor_pos = (2, 0)
+            lcd.write_string("Zuletzt: % 9.2f \x03" % inserted)
+            lcd.cursor_pos = (3, 0)
+            lcd.write_string("Mit OK beenden      ")
+            oldVal = val
+            lastInserted = inserted
+        key = keypad.poll()
+        if key == "O" or (lastInserted == 0 and key == "E"):
+            break
+        if not MakerSpaceAPI.ping():
+            logger.error("Lost connection to database")
+            bills.disableAcceptance()
+            coin.inhibit()
+            showConnectionFailure()
+            time.sleep(5)
+            break
+        c, p = coin.poll()
+        if c is not None:
+            timeout = time.time() + 30
+            if c > 0:
+                logger.info("Inserted coin value %.2f", c)
+                inserted = c
+                if konto.addValue(c):
+                    val += c
+                else:
+                    logger.error(
+                        "Adding coin value %.2f to donations account failed!", c
+                    )
+                    bills.disableAcceptance()
+                    coin.inhibit()
+                    showConnectionFailure()
+                    lcd.cursor_pos = (3, 0)
+                    lcd.write_string("Bitte melden!")
+                    time.sleep(5)
+                    break
+            else:
+                logger.error("Inserted unknown coin with %d pulses.", p)
+                # konto.addValue(0)
+                pass  # unknown coin?
+            coin.enable()
+        bills.parse()
+        if bills.getEscrow():
+            logger.info("Inserted bill value %d, accepting", bills.getEscrow())
+            timeout = time.time() + 30
+            bills.acceptEscrow()
+        b = bills.getAndClearAcceptedValue()
+        if b:
+            logger.info("Stored bill value %d", b)
+            timeout = time.time() + 30
+            inserted = b
+            if konto.addValue(b):
+                val += b
+            else:
+                logger.error("Adding bill value %.2f to donations account failed!", c)
+                bills.disableAcceptance()
+                coin.inhibit()
+                showConnectionFailure()
+                lcd.cursor_pos = (3, 0)
+                lcd.write_string("Bitte melden!")
+                time.sleep(5)
+                break
+        time.sleep(0.1)
+    bills.disableAcceptance()
+    coin.inhibit()
+    time.sleep(1)
+    c, p = coin.poll()  # If not fast enough disabled
+    if c is not None:
+        if c > 0:
+            logger.info("Inserted coin value %.2f after closing", c)
+            if konto.addValue(c):
+                val += c
+            else:
+                logger.error(
+                    "Failed to book trailing coin value %.2f after closing", c
+                )
+                alertAdmin(
+                    f"Bankomat Buchungsfehler {konto.getTarget()}",
+                    "Spende %.2f Euro konnte nach Verbindungsabbruch nicht "
+                    "verbucht werden (Kontostand nachprüfen)." % c,
+                )
+        else:
+            logger.error("Inserted unknown coin with %d pulses after closing", p)
+            # konto.addValue(0)
+    lcd.clear()
+    lcd.cursor_pos = (2, 0)
+    if val == 0:
+        #                 12345678901234567890
+        lcd.write_string("      Schade...")
+    elif val >= 20:
+        #                 12345678901234567890
+        lcd.write_string("  Sehr gro\x02zügig!")
+    elif val >= 5:
+        #                 12345678901234567890
+        lcd.write_string("    Vielen Dank!")
+    else:
+        #                 12345678901234567890
+        lcd.write_string("       Danke!")
+    time.sleep(3)
 
 
-def showTransactionDetails(t : Transaction):
-	logger.debug('Showing transaction details')
-	lcd.clear()
-	lcd.write_string("%s" % t.getDate().strftime('%d.%m.%y %H:%M'))
-	lcd.cursor_pos = (1, 0)
-	lcd.write_string("%40s" % t.getDesc()[:40])
-	lcd.cursor_pos = (3, 0)
-	lcd.write_string("%18.2f \x03" % t.getValue())
-	timeout = time.time() + 30
-	while keypad.poll() != 'E' and timeout > time.time():
-		time.sleep(.1)
+def showTransactionDetails(t: Transaction):
+    logger.debug("Showing transaction details")
+    lcd.clear()
+    lcd.write_string("%s" % t.getDate().strftime("%d.%m.%y %H:%M"))
+    lcd.cursor_pos = (1, 0)
+    lcd.write_string("%40s" % t.getDesc()[:40])
+    lcd.cursor_pos = (3, 0)
+    lcd.write_string("%18.2f \x03" % t.getValue())
+    timeout = time.time() + 30
+    while keypad.poll() != "E" and timeout > time.time():
+        time.sleep(0.1)
 
-def historyAccount(konto : MakerSpaceAPI):
-	logger.debug('Showing transaction list')
-	offset = 0
-	cursor = 0
-	oldKey = keypad.poll()
-	transactions = konto.getTransactions()
-	numTransactions = len(transactions)
-	oldTransactions = None
-	timeout = time.time() + 30
-	while timeout > time.time():
-		if transactions != oldTransactions:
-			oldTransactions = transactions
-			for i in range(len(transactions)):
-				lcd.cursor_pos = (i, 2)
-				lcd.write_string('%18s' % transactions[i].getDesc()[:18])
-			for i in range(len(transactions), 4):
-				lcd.cursor_pos = (i, 2)
-				lcd.write_string(' ' * 18)
-			for i in range(4):
-				lcd.cursor_pos = (i, 0)
-				lcd.write_string('* ' if i == cursor else '  ')
-		key = keypad.poll()
-		if key != oldKey:
-			oldKey = key
-			if key == 'E':
-				return
-			elif key == 'O':
-				showTransactionDetails(transactions[cursor])
-				oldKey = keypad.poll()
-				oldTransactions = None
-				timeout = time.time() + 30
-			elif key == 'U':
-				if cursor > 0:
-					lcd.cursor_pos = (cursor, 0)
-					lcd.write_string(' ')
-					cursor -= 1
-					lcd.cursor_pos = (cursor, 0)
-					lcd.write_string('*')
-				elif offset > 0:
-					offset -= 1
-					transactions = konto.getTransactions(offset)
-				timeout = time.time() + 30
-			elif key == 'D':
-				if cursor < numTransactions - 1:
-					lcd.cursor_pos = (cursor, 0)
-					lcd.write_string(' ')
-					cursor += 1
-					lcd.cursor_pos = (cursor, 0)
-					lcd.write_string('*')
-				elif cursor == 3:
-					tmp = konto.getTransactions(offset + 1)
-					if len(tmp) == 4:
-						offset += 1
-						transactions = tmp
-				timeout = time.time() + 30
-		else:
-			time.sleep(.1)
 
-def enterAmount(maxVal : float):
-	logger.debug('Requesting input of value, max: %.2f', maxVal)
-	lcd.clear()
-	lcd.write_string('Verfügbar:')
-	lcd.cursor_pos = (1, 0)
-	lcd.write_string('%18.2f \x03' % maxVal)
-	lcd.cursor_pos = (2, 0)
-	lcd.write_string('Betrag:')
-	lcd.cursor_pos = (3, 0)
-	val = '0'
-	oldVal = None
-	oldKey = keypad.poll()
-	while True:
-		key = keypad.poll()
-		if key is not None and oldKey != key:
-			if key >= '0' and key <= '9':
-				if round(float(val + key) / 100.0, 2) <= maxVal:
-					val += key
-			elif key == 'C':
-				val = val[:-1]
-				if not len(val):
-					val = '0'
-			elif key == 'E':
-				logger.debug('Cancelled')
-				return None
-			elif key == 'O':
-				logger.debug('Input %.2f', float(val) / 100.0)
-				return round(float(val) / 100.0, 2)
-		if val != oldVal:
-			oldVal = val
-			lcd.cursor_pos = (3, 0)
-			lcd.write_string('%18.2f \x03' % (float(val) / 100.0))
-		oldKey = key
+def historyAccount(konto: MakerSpaceAPI):
+    logger.debug("Showing transaction list")
+    offset = 0
+    cursor = 0
+    oldKey = keypad.poll()
+    transactions = konto.getTransactions()
+    numTransactions = len(transactions)
+    oldTransactions = None
+    timeout = time.time() + 30
+    while timeout > time.time():
+        if transactions != oldTransactions:
+            oldTransactions = transactions
+            for i in range(len(transactions)):
+                lcd.cursor_pos = (i, 2)
+                lcd.write_string("%18s" % transactions[i].getDesc()[:18])
+            for i in range(len(transactions), 4):
+                lcd.cursor_pos = (i, 2)
+                lcd.write_string(" " * 18)
+            for i in range(4):
+                lcd.cursor_pos = (i, 0)
+                lcd.write_string("* " if i == cursor else "  ")
+        key = keypad.poll()
+        if key != oldKey:
+            oldKey = key
+            if key == "E":
+                return
+            elif key == "O":
+                showTransactionDetails(transactions[cursor])
+                oldKey = keypad.poll()
+                oldTransactions = None
+                timeout = time.time() + 30
+            elif key == "U":
+                if cursor > 0:
+                    lcd.cursor_pos = (cursor, 0)
+                    lcd.write_string(" ")
+                    cursor -= 1
+                    lcd.cursor_pos = (cursor, 0)
+                    lcd.write_string("*")
+                elif offset > 0:
+                    offset -= 1
+                    transactions = konto.getTransactions(offset)
+                timeout = time.time() + 30
+            elif key == "D":
+                if cursor < numTransactions - 1:
+                    lcd.cursor_pos = (cursor, 0)
+                    lcd.write_string(" ")
+                    cursor += 1
+                    lcd.cursor_pos = (cursor, 0)
+                    lcd.write_string("*")
+                elif cursor == 3:
+                    tmp = konto.getTransactions(offset + 1)
+                    if len(tmp) == 4:
+                        offset += 1
+                        transactions = tmp
+                timeout = time.time() + 30
+        else:
+            time.sleep(0.1)
 
-def transferAccount(konto : MakerSpaceAPI):
-	amount = enterAmount(konto.getCardValue())
-	if amount is None:
-		return False
-	else:
-		tag = waitForTransferTag()
-		if tag is None:
-			lcd.clear()
-			lcd.cursor_pos = (2, 0)
-			#                 12345678901234567890
-			lcd.write_string('    Abgebrochen')
-			time.sleep(5)
-			return False
-		else:
-			ret = konto.transfer(amount, tag)
-			lcd.clear()
-			if ret == 0:
-				logger.info('Transfer successful')
-				#                 12345678901234567890
-				lcd.write_string('    \x01berweisung')
-				lcd.cursor_pos = (1, 0)
-				lcd.write_string('    erfolgreich')
-			elif ret == -1:
-				logger.error('Tried to transfer more, than available')
-				lcd.write_string('Fehler')
-				lcd.cursor_pos = (1, 0)
-				lcd.write_string('Guthaben nicht')
-				lcd.cursor_pos = (2, 0)
-				lcd.write_string('ausreichend')
-			elif ret == 1:
-				logger.error('Tried to transfer to same account')
-				lcd.write_string('Fehler')
-				lcd.cursor_pos = (1, 0)
-				lcd.write_string('Gleiches Konto')
-			elif ret == 2:
-				logger.error('Receiving account not registered')
-				lcd.write_string('Fehler')
-				lcd.cursor_pos = (1, 0)
-				lcd.write_string('Gegenkonto fehlt')
-				lcd.cursor_pos = (2, 0)
-				lcd.write_string('Erst registrieren')
-			elif ret == 3:
-				logger.debug('Cancelled')
-				lcd.write_string('Fehler')
-				lcd.cursor_pos = (1, 0)
-				lcd.write_string('\x01berweisung abgebrochen')
-			time.sleep(5)
-			return ret == 0
+
+def enterAmount(maxVal: float):
+    logger.debug("Requesting input of value, max: %.2f", maxVal)
+    lcd.clear()
+    lcd.write_string("Verfügbar:")
+    lcd.cursor_pos = (1, 0)
+    lcd.write_string("%18.2f \x03" % maxVal)
+    lcd.cursor_pos = (2, 0)
+    lcd.write_string("Betrag:")
+    lcd.cursor_pos = (3, 0)
+    val = "0"
+    oldVal = None
+    oldKey = keypad.poll()
+    while True:
+        key = keypad.poll()
+        if key is not None and oldKey != key:
+            if key >= "0" and key <= "9":
+                if round(float(val + key) / 100.0, 2) <= maxVal:
+                    val += key
+            elif key == "C":
+                val = val[:-1]
+                if not len(val):
+                    val = "0"
+            elif key == "E":
+                logger.debug("Cancelled")
+                return None
+            elif key == "O":
+                logger.debug("Input %.2f", float(val) / 100.0)
+                return round(float(val) / 100.0, 2)
+        if val != oldVal:
+            oldVal = val
+            lcd.cursor_pos = (3, 0)
+            lcd.write_string("%18.2f \x03" % (float(val) / 100.0))
+        oldKey = key
+
+
+def transferAccount(konto: MakerSpaceAPI):
+    amount = enterAmount(konto.getCardValue())
+    if amount is None:
+        return False
+    else:
+        tag = waitForTransferTag()
+        if tag is None:
+            lcd.clear()
+            lcd.cursor_pos = (2, 0)
+            #                 12345678901234567890
+            lcd.write_string("    Abgebrochen")
+            time.sleep(5)
+            return False
+        else:
+            ret = konto.transfer(amount, tag)
+            lcd.clear()
+            if ret == 0:
+                logger.info("Transfer successful")
+                #                 12345678901234567890
+                lcd.write_string("    \x01berweisung")
+                lcd.cursor_pos = (1, 0)
+                lcd.write_string("    erfolgreich")
+            elif ret == -1:
+                logger.error("Tried to transfer more, than available")
+                lcd.write_string("Fehler")
+                lcd.cursor_pos = (1, 0)
+                lcd.write_string("Guthaben nicht")
+                lcd.cursor_pos = (2, 0)
+                lcd.write_string("ausreichend")
+            elif ret == 1:
+                logger.error("Tried to transfer to same account")
+                lcd.write_string("Fehler")
+                lcd.cursor_pos = (1, 0)
+                lcd.write_string("Gleiches Konto")
+            elif ret == 2:
+                logger.error("Receiving account not registered")
+                lcd.write_string("Fehler")
+                lcd.cursor_pos = (1, 0)
+                lcd.write_string("Gegenkonto fehlt")
+                lcd.cursor_pos = (2, 0)
+                lcd.write_string("Erst registrieren")
+            elif ret == 3:
+                logger.debug("Cancelled")
+                lcd.write_string("Fehler")
+                lcd.cursor_pos = (1, 0)
+                lcd.write_string("\x01berweisung abgebrochen")
+            time.sleep(5)
+            return ret == 0
+
 
 def inputPin():
-	logger.debug('Requesting pin')
-	lcd.clear()
-	lcd.cursor_pos = (1, 0)
-	#                 12345678901234567890
-	lcd.write_string('   Pin eingeben:    ')
-	pin = ''
-	oldPin = ''
-	oldKey = keypad.poll()
-	while True:
-		key = keypad.poll()
-		if key is not None and oldKey != key:
-			if key >= '0' and key <= '9' and len(pin) < 4:
-				pin += key
-			if key == 'C':
-				pin = pin[:-1]
-			if key == 'E':
-				return None
-			if key == 'O' and len(pin) == 4:
-				return pin
-			if pin != oldPin:
-				oldPin = pin
-				lcd.cursor_pos = (2, 8)
-				lcd.write_string(('*' * len(pin))+(' ' * (4 - len(pin))))
-		oldKey = key
+    logger.debug("Requesting pin")
+    lcd.clear()
+    lcd.cursor_pos = (1, 0)
+    #                 12345678901234567890
+    lcd.write_string("   Pin eingeben:    ")
+    pin = ""
+    oldPin = ""
+    oldKey = keypad.poll()
+    while True:
+        key = keypad.poll()
+        if key is not None and oldKey != key:
+            if key >= "0" and key <= "9" and len(pin) < 4:
+                pin += key
+            if key == "C":
+                pin = pin[:-1]
+            if key == "E":
+                return None
+            if key == "O" and len(pin) == 4:
+                return pin
+            if pin != oldPin:
+                oldPin = pin
+                lcd.cursor_pos = (2, 8)
+                lcd.write_string(("*" * len(pin)) + (" " * (4 - len(pin))))
+        oldKey = key
 
-def withdrawAccount(konto : MakerSpaceAPI):
-	logger.debug('Starting account mopup')
-	conf = False
-	for i in range(3):
-		pin = inputPin()
-		if pin is None:
-			return
-		if konto.checkPin(pin):
-			conf = True
-			break
-	if not conf:
-		return
-	total = konto.getTotal()
-	''' Disabled, so door can still be opened even if all accounts are at 0
+
+def withdrawAccount(konto: MakerSpaceAPI):
+    logger.debug("Starting account mopup")
+    conf = False
+    for i in range(3):
+        pin = inputPin()
+        if pin is None:
+            return
+        if konto.checkPin(pin):
+            conf = True
+            break
+    if not conf:
+        return
+    total = konto.getTotal()
+    """ Disabled, so door can still be opened even if all accounts are at 0
 	if total == 0:
 		logger.error('Trying to mopup empty account')
 		lcd.clear()
@@ -586,145 +661,149 @@ def withdrawAccount(konto : MakerSpaceAPI):
 		lcd.write_string(' leer.')
 		time.sleep(5)
 		return
-	'''
-	door.open()
-	amount = enterAmount(total)
-	if amount is None or amount == 0:
-		lcd.clear()
-		lcd.write_string('Abgebrochen')
-		time.sleep(5)
-	elif konto.withdrawValue(amount):
-		lcd.clear()
-		lcd.write_string('Abschöpfung von')
-		lcd.cursor_pos = (1, 0)
-		lcd.write_string('%18.2f \x03' % amount)
-		lcd.cursor_pos = (2, 0)
-		lcd.write_string('erfolgreich')
-		try:
-			from email_sender import emailSender
-			email = emailSender()
-			name = konto.getAdminName()
-			email.report(
-				f'Abschöpfung {konto.getTarget()}',
-				'Soeben hat %s eine Abschöpfung in Höhe von %.2f Euro vorgenommen' % (name, amount),
-			)
-		except Exception:
-			pass
-	else:
-		lcd.clear()
-		lcd.write_string('Abschöpfung')
-		lcd.cursor_pos = (1, 0)
-		lcd.write_string('fehlgeschlagen')
-	time.sleep(5)
-	if door.isOpen():
-		lcd.clear()
-		lcd.write_string('Tür schlie\x02en!')
-		while door.isOpen():
-			time.sleep(1)
-			while door.isOpen():
-				time.sleep(.5)
+	"""
+    door.open()
+    amount = enterAmount(total)
+    if amount is None or amount == 0:
+        lcd.clear()
+        lcd.write_string("Abgebrochen")
+        time.sleep(5)
+    elif konto.withdrawValue(amount):
+        lcd.clear()
+        lcd.write_string("Abschöpfung von")
+        lcd.cursor_pos = (1, 0)
+        lcd.write_string("%18.2f \x03" % amount)
+        lcd.cursor_pos = (2, 0)
+        lcd.write_string("erfolgreich")
+        try:
+            from email_sender import emailSender
 
-def subMenu(konto : MakerSpaceAPI):
-	logger.debug('Submenu for %s', konto.getTarget())
-	timeout = time.time() + 30
-	while timeout > time.time():
-		lcd.clear()
-		lcd.write_string('5 Einzahlung')
-		lcd.cursor_pos = (1, 0)
-		lcd.write_string('6 Transaktionen')
-		lcd.cursor_pos = (2, 0)
-		lcd.write_string('7 \x01berweisung')
-		if konto.isAdmin():
-			lcd.cursor_pos = (3, 0)
-			lcd.write_string('8 Abschöpfung')
-		timeout = time.time() + 30
-		while True:
-			key = keypad.poll()
-			if key == '5':
-				topupAccount(konto)
-				return
-			elif key == '6':
-				historyAccount(konto)
-				timeout = time.time() + 30
-				break
-			elif key == '7':
-				transferAccount(konto)
-				return
-			elif key == '8' and konto.isAdmin():
-				withdrawAccount(konto)
-				return
-			elif time.time() > timeout or key == 'E':
-				return
+            email = emailSender()
+            name = konto.getAdminName()
+            email.report(
+                f"Abschöpfung {konto.getTarget()}",
+                "Soeben hat %s eine Abschöpfung in Höhe von %.2f Euro vorgenommen"
+                % (name, amount),
+            )
+        except Exception:
+            pass
+    else:
+        lcd.clear()
+        lcd.write_string("Abschöpfung")
+        lcd.cursor_pos = (1, 0)
+        lcd.write_string("fehlgeschlagen")
+    time.sleep(5)
+    if door.isOpen():
+        lcd.clear()
+        lcd.write_string("Tür schlie\x02en!")
+        while door.isOpen():
+            time.sleep(1)
+            while door.isOpen():
+                time.sleep(0.5)
+
+
+def subMenu(konto: MakerSpaceAPI):
+    logger.debug("Submenu for %s", konto.getTarget())
+    timeout = time.time() + 30
+    while timeout > time.time():
+        lcd.clear()
+        lcd.write_string("5 Einzahlung")
+        lcd.cursor_pos = (1, 0)
+        lcd.write_string("6 Transaktionen")
+        lcd.cursor_pos = (2, 0)
+        lcd.write_string("7 \x01berweisung")
+        if konto.isAdmin():
+            lcd.cursor_pos = (3, 0)
+            lcd.write_string("8 Abschöpfung")
+        timeout = time.time() + 30
+        while True:
+            key = keypad.poll()
+            if key == "5":
+                topupAccount(konto)
+                return
+            elif key == "6":
+                historyAccount(konto)
+                timeout = time.time() + 30
+                break
+            elif key == "7":
+                transferAccount(konto)
+                return
+            elif key == "8" and konto.isAdmin():
+                withdrawAccount(konto)
+                return
+            elif time.time() > timeout or key == "E":
+                return
+
 
 def mainMenu(tag):
-	logger.debug('Main menu showing')
-	
-	if not MakerSpaceAPI.ping():
-		lcd.clear()
-		lcd.cursor_pos = (0, 0)
-		lcd.write_string('API nicht erreichbar')
-		time.sleep(3)
-		return
-	
-	kasse = MakerSpaceAPI(settings.ACCOUNT_TARGET, tag)
-	cardvalue = kasse.getCardValue()
-	if settings.GUEST_UID is not None and tag == settings.GUEST_UID:
-		topupAccount(kasse)
-		return
-	timeout = time.time() + 30
-	while timeout > time.time():
-		timeout = time.time() + 30
-		lcd.clear()
-		lcd.cursor_pos = (0, 0)
-		admin = kasse.isAdmin()
-		if kasse is None:
-			#                12345678901234567890
-			lcd.write_string('x Kasse     N/A')
-		elif cardvalue is not None:
-			print("Getränkekonto gefunden %.2f" % cardvalue)
-			lcd.write_string('1 Konto')
-		else:
-			lcd.write_string('1 Konto')
-		
-		if admin:
-			lcd.cursor_pos = (2, 0)
-			lcd.write_string('3 Spenden entnehmen')
-			lcd.cursor_pos = (3, 0)
-			lcd.write_string('4 Kartenkäufe entn.')
-		while True:
-			key = keypad.poll()
-			if key == '1':
-				if cardvalue is None:
-					logger.info('Trying to access nfckasse, not registered')
-					lcd.clear()
-					lcd.write_string('Kein Konto')
-					lcd.cursor_pos = (1, 0)
-					lcd.write_string('Erst dort')
-					lcd.cursor_pos = (2, 0)
-					lcd.write_string('registrieren!')
-					time.sleep(5)
-					break
-				else:
-					if key == '1':
-						subMenu(kasse)
-					return
-			elif key == '3' and admin:
-				kasse.changeTarget(settings.DONATION_TARGET)
-				withdrawAccount(kasse)
-				return
-			elif key == '4' and admin:
-				kasse.changeTarget(settings.CARDS_TARGET)
-				withdrawAccount(kasse)
-				return
-			elif key == 'E' or time.time() > timeout:
-				return
+    logger.debug("Main menu showing")
+
+    if not MakerSpaceAPI.ping():
+        lcd.clear()
+        lcd.cursor_pos = (0, 0)
+        lcd.write_string("API nicht erreichbar")
+        time.sleep(3)
+        return
+
+    kasse = MakerSpaceAPI(settings.ACCOUNT_TARGET, tag)
+    cardvalue = kasse.getCardValue()
+    if settings.GUEST_UID is not None and tag == settings.GUEST_UID:
+        topupAccount(kasse)
+        return
+    timeout = time.time() + 30
+    while timeout > time.time():
+        timeout = time.time() + 30
+        lcd.clear()
+        lcd.cursor_pos = (0, 0)
+        admin = kasse.isAdmin()
+        if kasse is None:
+            #                12345678901234567890
+            lcd.write_string("x Getränkekasse N/A")
+        elif cardvalue is not None:
+            print("Konto gefunden %.2f" % cardvalue)
+            lcd.write_string("1 Konto")
+        else:
+            lcd.write_string("1 Kein Konto")
+
+        if admin:
+            lcd.cursor_pos = (2, 0)
+            lcd.write_string("3 Spenden entnehmen")
+            lcd.cursor_pos = (3, 0)
+            lcd.write_string("4 Kartenkäufe entn.")
+        while True:
+            key = keypad.poll()
+            if key == "1":
+                if cardvalue is None:
+                    logger.info("Trying to access nfckasse, not registered")
+                    lcd.clear()
+                    lcd.write_string("Kein Getränkekassen-")
+                    lcd.cursor_pos = (1, 0)
+                    lcd.write_string("Konto. Erst dort")
+                    lcd.cursor_pos = (2, 0)
+                    lcd.write_string("registrieren!")
+                    time.sleep(5)
+                    break
+                else:
+                    if key == "1":
+                        subMenu(kasse)
+                    return
+            elif key == "3" and admin:
+                kasse.changeTarget(settings.DONATION_TARGET)
+                withdrawAccount(kasse)
+                return
+            elif key == "4" and admin:
+                kasse.changeTarget(settings.CARDS_TARGET)
+                withdrawAccount(kasse)
+                return
+            elif key == "E" or time.time() > timeout:
+                return
+
 
 time.sleep(1)
 while True:
-	tag = wait_for_tag()
-	if tag is not None:
-		lcd.clear()
-		lcd.backlight_enabled = True
-		lcd.write_string('Einen Moment...')
-		mainMenu(tag)
-
+    tag = wait_for_tag()
+    if tag is not None:
+        lcd.clear()
+        lcd.backlight_enabled = True
+        lcd.write_string("Einen Moment...")
+        mainMenu(tag)
