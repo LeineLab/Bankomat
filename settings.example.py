@@ -31,3 +31,10 @@ UID_TEST = [0, 0, 0, 0]
 # miscounts). None disables it (default); set a filename like "coin_log.csv"
 # to enable. Columns: timestamp, unix time, running pulse count, was-enabled.
 COIN_LOG = None
+
+# Delay (seconds) after a coin's first pulse before the coin acceptor input
+# is blocked (faked exit-blocked). Protects the coin from being disturbed by
+# our own inhibit signal while still committing physically, while blocking a
+# fast follow-up coin during processing. Tune based on oscilloscope
+# measurements of your specific CH-926 unit.
+COIN_INHIBIT_DELAY = 0.1

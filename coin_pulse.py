@@ -2,6 +2,7 @@ import RPi.GPIO as GPIO
 import time
 import datetime
 import os
+import threading
 
 
 class CoinPulse:
@@ -12,14 +13,36 @@ class CoinPulse:
     _logfile = None
 
     def intCallback(self, channel):
-        # Capture the enabled state *before* inhibit() flips it, so the log can
-        # reveal pulses that arrive while the input should have been blocked
-        # (a strong ghost-pulse indicator).
-        was_enabled = self._enabled
-        self._pulses += 1
-        self._last_pulse = time.time()
-        self.inhibit()
-        self._log(self._pulses, was_enabled)
+        with self._lock:
+            # Capture the enabled state *before* it changes, so the log can
+            # reveal pulses that arrive while the input should have been
+            # blocked (a strong ghost-pulse indicator).
+            was_enabled = self._enabled
+            self._pulses += 1
+            pulses = self._pulses
+            self._last_pulse = time.time()
+            # Arm the delayed inhibit on the *first* pulse of a coin only;
+            # later pulses of the same train don't reset it. A fixed delay
+            # (not "N ms after the last pulse") is what lets the coin
+            # physically commit before we fake the exit blocked, without
+            # requiring the whole multi-pulse train to finish first.
+            if self._inhibit_timer is None:
+                epoch = self._epoch
+                self._inhibit_timer = threading.Timer(
+                    self._inhibit_delay, self._delayedInhibit, args=(epoch,)
+                )
+                self._inhibit_timer.daemon = True
+                self._inhibit_timer.start()
+        self._log(pulses, was_enabled)
+
+    def _delayedInhibit(self, epoch):
+        with self._lock:
+            if epoch != self._epoch:
+                # Superseded by an enable()/inhibit() since this was armed.
+                return
+            self._inhibit_timer = None
+            self._enabled = False
+        GPIO.output(self._inhibit_pin, 1)
 
     def _log(self, pulses, was_enabled):
         # Runs in the GPIO callback thread. Only buffer here (a fast in-process
@@ -40,40 +63,66 @@ class CoinPulse:
         )
 
     def poll(self):
-        ret = None
-        lp = self._last_pulse
-        p = self._pulses
-        if lp and lp + 0.5 < time.time():
-            if p in self._value_for_pulses:
-                ret = self._value_for_pulses[self._pulses]
-            else:
-                ret = 0
-            self._pulses = 0
-            self._last_pulse = 0
-            # Flush the pulse log here (main thread) rather than in the ISR, so
-            # the callback thread never blocks on I/O and can't miss edges.
-            if self._logfile is not None:
-                self._logfile.flush()
+        with self._lock:
+            lp = self._last_pulse
+            p = self._pulses
+            ret = None
+            if lp and lp + 0.5 < time.time():
+                # Use the snapshot p, not self._pulses: a pulse landing between
+                # the reads above and here would otherwise be evaluated against
+                # the wrong (live) count and then wiped out by the reset below.
+                if p in self._value_for_pulses:
+                    ret = self._value_for_pulses[p]
+                else:
+                    ret = 0
+                self._pulses = 0
+                self._last_pulse = 0
+        # Flush the pulse log here (main thread, outside the lock) rather than
+        # in the ISR, so the callback thread never blocks on I/O and can't
+        # miss edges.
+        if ret is not None and self._logfile is not None:
+            self._logfile.flush()
         return ret, p
 
     def inhibit(self):
-        self._enabled = False
+        with self._lock:
+            if self._inhibit_timer is not None:
+                self._inhibit_timer.cancel()
+                self._inhibit_timer = None
+            self._epoch += 1
+            self._enabled = False
         GPIO.output(self._inhibit_pin, 1)
 
     def enable(self):
-        if not self._enabled:
-            self._pulses = 0
-            self._last_pulse = 0
-        self._enabled = True
+        with self._lock:
+            if self._inhibit_timer is not None:
+                self._inhibit_timer.cancel()
+                self._inhibit_timer = None
+            self._epoch += 1
+            if not self._enabled:
+                self._pulses = 0
+                self._last_pulse = 0
+            self._enabled = True
         GPIO.output(self._inhibit_pin, 0)
 
     def isEnabled(self):
         return self._enabled
 
-    def __init__(self, pulse_pin, inhibit_pin, value_for_pulses, log_path=None):
+    def __init__(
+        self,
+        pulse_pin,
+        inhibit_pin,
+        value_for_pulses,
+        log_path=None,
+        inhibit_delay=0.1,
+    ):
         self._pulse_pin = pulse_pin
         self._inhibit_pin = inhibit_pin
         self._value_for_pulses = value_for_pulses
+        self._inhibit_delay = inhibit_delay
+        self._lock = threading.Lock()
+        self._epoch = 0
+        self._inhibit_timer = None
         if log_path:
             is_new = not os.path.exists(log_path)
             self._logfile = open(log_path, "a")

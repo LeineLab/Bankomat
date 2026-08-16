@@ -30,7 +30,11 @@ lcd.clear()
 lcd.write_string("Booting...")
 
 coin = CoinPulse(
-    17, 22, {2: 0.5, 3: 1, 4: 2}, log_path=getattr(settings, "COIN_LOG", None)
+    17,
+    22,
+    {2: 0.5, 3: 1, 4: 2},
+    log_path=getattr(settings, "COIN_LOG", None),
+    inhibit_delay=getattr(settings, "COIN_INHIBIT_DELAY", 0.1),
 )
 cols = [26, 19, 13, 6]
 rows = [21, 20, 16, 12]
