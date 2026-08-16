@@ -217,7 +217,7 @@ def topupAccount(konto : MakerSpaceAPI):
 	while timeout > time.time():
 		if oldVal != val or lastInserted != inserted:
 			lcd.cursor_pos = (0, 0)
-			lcd.write_string('   Getränkekonto:   ')
+			lcd.write_string('        Konto:      ')
 			lcd.cursor_pos = (1, 0)
 			lcd.write_string('Guthaben:% 9.2f \x03' % val)
 			lcd.cursor_pos = (2, 0)
@@ -679,12 +679,12 @@ def mainMenu(tag):
 		admin = kasse.isAdmin()
 		if kasse is None:
 			#                12345678901234567890
-			lcd.write_string('x Getränkekasse N/A')
+			lcd.write_string('x Kasse     N/A')
 		elif cardvalue is not None:
 			print("Getränkekonto gefunden %.2f" % cardvalue)
-			lcd.write_string('1 Getränkekonto')
+			lcd.write_string('1 Konto')
 		else:
-			lcd.write_string('1 Kein Getränkekonto')
+			lcd.write_string('1 Konto')
 		
 		if admin:
 			lcd.cursor_pos = (2, 0)
@@ -697,9 +697,9 @@ def mainMenu(tag):
 				if cardvalue is None:
 					logger.info('Trying to access nfckasse, not registered')
 					lcd.clear()
-					lcd.write_string('Kein Getränkekassen-')
+					lcd.write_string('Kein Konto')
 					lcd.cursor_pos = (1, 0)
-					lcd.write_string('Konto. Erst dort')
+					lcd.write_string('Erst dort')
 					lcd.cursor_pos = (2, 0)
 					lcd.write_string('registrieren!')
 					time.sleep(5)
