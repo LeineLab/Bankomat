@@ -248,6 +248,8 @@ def topupAccount(konto: MakerSpaceAPI):
             break
         if not MakerSpaceAPI.ping():
             logger.error("Lost connection to database")
+            bills.disableAcceptance()
+            coin.inhibit()
             showConnectionFailure()
             time.sleep(5)
             break
@@ -259,6 +261,8 @@ def topupAccount(konto: MakerSpaceAPI):
                 inserted = c
                 ret = konto.addCardValue(c)
                 if ret is None:
+                    bills.disableAcceptance()
+                    coin.inhibit()
                     showConnectionFailure()
                     lcd.cursor_pos = (3, 0)
                     lcd.write_string("Bitte melden!")
@@ -282,6 +286,8 @@ def topupAccount(konto: MakerSpaceAPI):
             logger.info("Adding value to account")
             ret = konto.addCardValue(b)
             if ret is None:
+                bills.disableAcceptance()
+                coin.inhibit()
                 showConnectionFailure()
                 lcd.cursor_pos = (3, 0)
                 lcd.write_string("Bitte melden!")
@@ -336,6 +342,8 @@ def donate():
             break
         if not MakerSpaceAPI.ping():
             logger.error("Lost connection to database")
+            bills.disableAcceptance()
+            coin.inhibit()
             showConnectionFailure()
             time.sleep(5)
             break
@@ -351,6 +359,8 @@ def donate():
                     logger.error(
                         "Adding coin value %.2f to donations account failed!", c
                     )
+                    bills.disableAcceptance()
+                    coin.inhibit()
                     showConnectionFailure()
                     lcd.cursor_pos = (3, 0)
                     lcd.write_string("Bitte melden!")
@@ -375,6 +385,8 @@ def donate():
                 val += b
             else:
                 logger.error("Adding bill value %.2f to donations account failed!", c)
+                bills.disableAcceptance()
+                coin.inhibit()
                 showConnectionFailure()
                 lcd.cursor_pos = (3, 0)
                 lcd.write_string("Bitte melden!")
