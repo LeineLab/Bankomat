@@ -182,6 +182,11 @@ def buyCard():
         lcd.write_string("     verfügbar.")
         time.sleep(5)
         return
+    if not MakerSpaceAPI.ping():
+        logger.error("Lost connection to database")
+        showConnectionFailure()
+        time.sleep(5)
+        return
     account = MakerSpaceAPI(settings.CARDS_TARGET)
     lcd.clear()
     lcd.write_string("Neue Karte: 50ct")
@@ -214,6 +219,11 @@ def buyCard():
 
 def topupAccount(konto: MakerSpaceAPI):
     logger.debug("Starting account charging for %s", konto.getTarget())
+    if not MakerSpaceAPI.ping():
+        logger.error("Lost connection to database")
+        showConnectionFailure()
+        time.sleep(5)
+        return
     inserted = 0
     oldVal = None
     lastInserted = 0
@@ -294,6 +304,11 @@ def topupAccount(konto: MakerSpaceAPI):
 
 def donate():
     logger.debug("Starting donation")
+    if not MakerSpaceAPI.ping():
+        logger.error("Lost connection to database")
+        showConnectionFailure()
+        time.sleep(5)
+        return
     inserted = 0
     oldVal = None
     lastInserted = 0
