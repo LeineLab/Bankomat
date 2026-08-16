@@ -26,3 +26,8 @@ DISPLAY_TIMEZONE = "Europe/Berlin"
 
 # Test UID for manual testing (list of bytes, e.g. [0x04, 0xAB, 0xCD, 0xEF])
 UID_TEST = [0, 0, 0, 0]
+
+# Optional: path to a CSV log of raw coin-acceptor pulses (for debugging
+# miscounts). None disables it (default); set a filename like "coin_log.csv"
+# to enable. Columns: timestamp, unix time, running pulse count, was-enabled.
+COIN_LOG = None

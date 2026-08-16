@@ -29,7 +29,9 @@ lcd.create_char(3, [0x07, 0x08, 0x1E, 0x08, 0x1E, 0x08, 0x07, 0x00])  # €
 lcd.clear()
 lcd.write_string("Booting...")
 
-coin = CoinPulse(17, 22, {2: 0.5, 3: 1, 4: 2})
+coin = CoinPulse(
+    17, 22, {2: 0.5, 3: 1, 4: 2}, log_path=getattr(settings, "COIN_LOG", None)
+)
 cols = [26, 19, 13, 6]
 rows = [21, 20, 16, 12]
 buttons = [
