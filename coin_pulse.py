@@ -58,8 +58,15 @@ class CoinPulse:
                 # fixed delay (not "N ms after the last pulse") is what lets
                 # the coin physically commit before we fake the exit
                 # blocked, without requiring the whole multi-pulse train to
-                # finish first.
-                if self._inhibit_timer is None:
+                # finish first. Gate on _inhibit_scheduled, NOT on
+                # _inhibit_timer being None: the timer object itself is
+                # cleared once it fires (see _delayedInhibit), so using it
+                # as the arming gate would let every later pulse in the same
+                # train re-arm a fresh timer - a real bug seen in the field
+                # (2026-08-17): three separate inhibit_write events for one
+                # 3-pulse coin instead of one.
+                if not self._inhibit_scheduled:
+                    self._inhibit_scheduled = True
                     epoch = self._epoch
                     self._inhibit_timer = threading.Timer(
                         self._inhibit_delay, self._delayedInhibit, args=(epoch,)
@@ -145,6 +152,7 @@ class CoinPulse:
             if self._inhibit_timer is not None:
                 self._inhibit_timer.cancel()
                 self._inhibit_timer = None
+            self._inhibit_scheduled = False
             self._epoch += 1
             self._enabled = False
             self._pending_falling = None
@@ -155,6 +163,7 @@ class CoinPulse:
             if self._inhibit_timer is not None:
                 self._inhibit_timer.cancel()
                 self._inhibit_timer = None
+            self._inhibit_scheduled = False
             self._epoch += 1
             if not self._enabled:
                 self._pulses = 0
@@ -187,6 +196,7 @@ class CoinPulse:
         self._lock = threading.Lock()
         self._epoch = 0
         self._inhibit_timer = None
+        self._inhibit_scheduled = False
         self._pending_falling = None
         self._last_valid_rising = 0
         if log_path:
