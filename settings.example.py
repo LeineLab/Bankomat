@@ -38,3 +38,13 @@ COIN_LOG = None
 # fast follow-up coin during processing. Tune based on oscilloscope
 # measurements of your specific CH-926 unit.
 COIN_INHIBIT_DELAY = 0.1
+
+# Pulse validation: a rising edge is only counted as a real coin pulse if its
+# LOW duration (width) and the preceding HIGH duration (pause) both clear
+# these minimums. Rejects noise/glitches (e.g. induced by our own inhibit
+# GPIO writes) that are too short to be a genuine CH-926 pulse. Defaults are
+# set below the fastest measured mode (Fast: 30ms pulse, 100ms pause) with
+# margin. Tune to your oscilloscope measurements.
+COIN_MIN_PULSE_WIDTH = 0.02
+COIN_MAX_PULSE_WIDTH = 0.15
+COIN_MIN_PAUSE = 0.09

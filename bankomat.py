@@ -35,6 +35,9 @@ coin = CoinPulse(
     {2: 0.5, 3: 1, 4: 2},
     log_path=getattr(settings, "COIN_LOG", None),
     inhibit_delay=getattr(settings, "COIN_INHIBIT_DELAY", 0.1),
+    min_pulse_width=getattr(settings, "COIN_MIN_PULSE_WIDTH", 0.02),
+    max_pulse_width=getattr(settings, "COIN_MAX_PULSE_WIDTH", 0.15),
+    min_pause=getattr(settings, "COIN_MIN_PAUSE", 0.09),
 )
 cols = [26, 19, 13, 6]
 rows = [21, 20, 16, 12]

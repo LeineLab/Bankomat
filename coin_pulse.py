@@ -12,28 +12,62 @@ class CoinPulse:
     _value_for_pulses = {}
     _logfile = None
 
-    def intCallback(self, channel):
+    def _edgeCallback(self, channel):
+        now = time.time()
+        # GPIO.BOTH doesn't tell us which edge fired; the current level does:
+        # HIGH means we just saw the pulse end (rising), LOW means it just
+        # started (falling).
+        if GPIO.input(self._pulse_pin):
+            self._onRising(now)
+        else:
+            self._onFalling(now)
+
+    def _onFalling(self, now):
         with self._lock:
-            # Capture the enabled state *before* it changes, so the log can
-            # reveal pulses that arrive while the input should have been
-            # blocked (a strong ghost-pulse indicator).
-            was_enabled = self._enabled
-            self._pulses += 1
-            pulses = self._pulses
-            self._last_pulse = time.time()
-            # Arm the delayed inhibit on the *first* pulse of a coin only;
-            # later pulses of the same train don't reset it. A fixed delay
-            # (not "N ms after the last pulse") is what lets the coin
-            # physically commit before we fake the exit blocked, without
-            # requiring the whole multi-pulse train to finish first.
-            if self._inhibit_timer is None:
-                epoch = self._epoch
-                self._inhibit_timer = threading.Timer(
-                    self._inhibit_delay, self._delayedInhibit, args=(epoch,)
-                )
-                self._inhibit_timer.daemon = True
-                self._inhibit_timer.start()
-        self._log(pulses, was_enabled)
+            self._pending_falling = now
+
+    def _onRising(self, now):
+        log_args = None
+        with self._lock:
+            falling = self._pending_falling
+            self._pending_falling = None
+            if falling is None:
+                # No matching pulse start on record (e.g. right after
+                # startup) - can't validate width, so ignore.
+                return
+            width = now - falling
+            pause = (
+                (falling - self._last_valid_rising)
+                if self._last_valid_rising
+                else None
+            )
+            if width < self._min_pulse_width or width > self._max_pulse_width:
+                log_args = (self._pulses, self._enabled, width, pause, "reject_width")
+            elif pause is not None and pause < self._min_pause:
+                log_args = (self._pulses, self._enabled, width, pause, "reject_pause")
+            else:
+                # Capture the enabled state *before* it changes, so the log
+                # can reveal pulses that arrive while the input should have
+                # been blocked (a strong ghost-pulse indicator).
+                was_enabled = self._enabled
+                self._last_valid_rising = now
+                self._pulses += 1
+                self._last_pulse = now
+                # Arm the delayed inhibit on the *first* pulse of a coin
+                # only; later pulses of the same train don't reset it. A
+                # fixed delay (not "N ms after the last pulse") is what lets
+                # the coin physically commit before we fake the exit
+                # blocked, without requiring the whole multi-pulse train to
+                # finish first.
+                if self._inhibit_timer is None:
+                    epoch = self._epoch
+                    self._inhibit_timer = threading.Timer(
+                        self._inhibit_delay, self._delayedInhibit, args=(epoch,)
+                    )
+                    self._inhibit_timer.daemon = True
+                    self._inhibit_timer.start()
+                log_args = (self._pulses, was_enabled, width, pause, "ok")
+        self._log(*log_args)
 
     def _delayedInhibit(self, epoch):
         with self._lock:
@@ -42,9 +76,27 @@ class CoinPulse:
                 return
             self._inhibit_timer = None
             self._enabled = False
-        GPIO.output(self._inhibit_pin, 1)
+        self._writeInhibitPin(1)
 
-    def _log(self, pulses, was_enabled):
+    def _writeInhibitPin(self, value):
+        # Every write to this pin is a suspected noise source coupling onto
+        # the adjacent pulse line (see coin_log analysis, 2026-08-17) -
+        # timestamp it in the same log so it can be correlated directly
+        # against rejected/accepted pulses instead of just inferred.
+        GPIO.output(self._inhibit_pin, value)
+        if self._logfile is not None:
+            self._logfile.write(
+                '"%s";%f;%d;%d;inhibit_write=%d;;\n'
+                % (
+                    datetime.datetime.now().strftime("%d.%m.%y %H:%M:%S.%f"),
+                    time.time(),
+                    self._pulses,
+                    1 if self._enabled else 0,
+                    value,
+                )
+            )
+
+    def _log(self, pulses, was_enabled, width, pause, status):
         # Runs in the GPIO callback thread. Only buffer here (a fast in-process
         # copy); do NOT flush. A flush forces a write() syscall that can stall
         # for tens of ms on SD-card writeback, during which further edges would
@@ -52,13 +104,17 @@ class CoinPulse:
         # main thread instead.
         if self._logfile is None:
             return
+        pause_ms = pause * 1000 if pause is not None else -1
         self._logfile.write(
-            '"%s";%f;%d;%d\n'
+            '"%s";%f;%d;%d;%s;%.1f;%.1f\n'
             % (
                 datetime.datetime.now().strftime("%d.%m.%y %H:%M:%S.%f"),
                 time.time(),
                 pulses,
                 1 if was_enabled else 0,
+                status,
+                width * 1000,
+                pause_ms,
             )
         )
 
@@ -91,7 +147,8 @@ class CoinPulse:
                 self._inhibit_timer = None
             self._epoch += 1
             self._enabled = False
-        GPIO.output(self._inhibit_pin, 1)
+            self._pending_falling = None
+        self._writeInhibitPin(1)
 
     def enable(self):
         with self._lock:
@@ -103,7 +160,8 @@ class CoinPulse:
                 self._pulses = 0
                 self._last_pulse = 0
             self._enabled = True
-        GPIO.output(self._inhibit_pin, 0)
+            self._pending_falling = None
+        self._writeInhibitPin(0)
 
     def isEnabled(self):
         return self._enabled
@@ -115,26 +173,36 @@ class CoinPulse:
         value_for_pulses,
         log_path=None,
         inhibit_delay=0.1,
+        min_pulse_width=0.02,
+        max_pulse_width=0.15,
+        min_pause=0.09,
     ):
         self._pulse_pin = pulse_pin
         self._inhibit_pin = inhibit_pin
         self._value_for_pulses = value_for_pulses
         self._inhibit_delay = inhibit_delay
+        self._min_pulse_width = min_pulse_width
+        self._max_pulse_width = max_pulse_width
+        self._min_pause = min_pause
         self._lock = threading.Lock()
         self._epoch = 0
         self._inhibit_timer = None
+        self._pending_falling = None
+        self._last_valid_rising = 0
         if log_path:
             is_new = not os.path.exists(log_path)
             self._logfile = open(log_path, "a")
             if is_new:
-                self._logfile.write('"DT";"UT";"Pulses";"WasEnabled"\n')
+                self._logfile.write(
+                    '"DT";"UT";"Pulses";"WasEnabled";"Status";"WidthMs";"PauseMs"\n'
+                )
                 self._logfile.flush()
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(self._pulse_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(self._inhibit_pin, GPIO.OUT)
         self.inhibit()
         GPIO.add_event_detect(
-            self._pulse_pin, GPIO.RISING, callback=self.intCallback, bouncetime=10
+            self._pulse_pin, GPIO.BOTH, callback=self._edgeCallback, bouncetime=5
         )
 
 
