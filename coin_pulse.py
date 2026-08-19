@@ -24,9 +24,32 @@ class CoinPulse:
 
     def _onFalling(self, now):
         with self._lock:
-            self._pending_falling = now
+            # Don't overwrite an already-pending falling edge: a second
+            # falling before the first got its matching rising means either
+            # a missed/coalesced edge or a glitch briefly interrupting a
+            # real pulse's LOW phase. Keeping the *original* timestamp is
+            # the safer default - overwriting it corrupts the eventual
+            # width measurement of what is very likely a genuine pulse and
+            # can cause it to be wrongly rejected as too short.
+            if self._pending_falling is None:
+                self._pending_falling = now
 
     def _onRising(self, now):
+        # NOTE: on a rejection, _pending_falling is always cleared (not kept
+        # "for later"), even though that's provably wrong for one specific
+        # scenario: a glitch briefly interrupting a real pulse's LOW phase,
+        # which would corrupt the eventual real width. An earlier version of
+        # this method preserved _pending_falling on short-width rejections to
+        # fix exactly that - but that broke the isolated-ghost-in-the-pause
+        # case (confirmed twice in the field on 2026-08-17), because the two
+        # scenarios are indistinguishable from a single edge in isolation.
+        # Clearing unconditionally is the safer default: it's mathematically
+        # guaranteed correct for the isolated-ghost case in Fast mode (a
+        # ghost can't satisfy both width>=min_pulse_width and
+        # pause>=min_pause and still fit inside a 100ms real pause), which is
+        # the confirmed, observed failure mode. The mid-pulse-interruption
+        # case remains an open gap - fixing it properly needs judging a
+        # completed train as a whole, not edge-by-edge.
         log_args = None
         with self._lock:
             falling = self._pending_falling
@@ -217,7 +240,7 @@ class CoinPulse:
 
 
 if __name__ == "__main__":
-    coin = CoinPulse(17, 22, {2: 0.5, 3: 1, 4: 2})
+    coin = CoinPulse(17, 22, {2: 0.5, 3: 1, 4: 2}, "coin_test.csv")
     # 	coin = CoinPulse(24, 22, {1:0.5, 2:1, 3:2})
     stored = 0
     input("Inhibited... Press Enter ")
